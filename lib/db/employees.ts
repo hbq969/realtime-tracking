@@ -109,8 +109,9 @@ export async function createEmployee(
   employeeData: EmployeeFormData & { reporter_id?: string }
 ): Promise<Employee> {
   const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('employees')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabaseAny = supabase as any
+  const { data, error } = await supabaseAny.from('employees')
     .insert({
       ...employeeData,
       status: 'pending',
@@ -133,8 +134,9 @@ export async function updateEmployee(
   employeeData: Partial<EmployeeFormData & { status?: 'pending' | 'followed' }>
 ): Promise<Employee> {
   const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('employees')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabaseAny = supabase as any
+  const { data, error } = await supabaseAny.from('employees')
     .update({
       ...employeeData,
       updated_at: new Date().toISOString(),
@@ -173,7 +175,9 @@ export async function importEmployees(
 
   for (const [index, employee] of employees.entries()) {
     try {
-      const { error } = await supabase.from('employees').insert({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const supabaseAny = supabase as any
+      const { error } = await supabaseAny.from('employees').insert({
         ...employee,
         status: 'pending',
       })
@@ -206,7 +210,8 @@ export async function getEmployeeStats(): Promise<{
   const supabase = await createSupabaseServerClient()
 
   // 获取总数和状态统计
-  const { data: allEmployees, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: allEmployees, error } = await (supabase as any)
     .from('employees')
     .select('status, department, leave_reason')
 
@@ -222,7 +227,8 @@ export async function getEmployeeStats(): Promise<{
     byLeaveReason: {} as Record<string, number>,
   }
 
-  allEmployees?.forEach((emp) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  allEmployees?.forEach((emp: any) => {
     // 状态统计
     if (emp.status === 'pending') stats.pending++
     if (emp.status === 'followed') stats.followed++

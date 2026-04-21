@@ -18,20 +18,21 @@ export async function createEmployeeAction(
     const supabase = await createSupabaseServerClient()
     const insertData: EmployeeInsert = {
       name: employeeData.name,
-      phone: employeeData.phone,
-      email: employeeData.email,
-      department: employeeData.department,
-      position: employeeData.position,
-      leave_date: employeeData.leave_date,
-      leave_reason: employeeData.leave_reason,
-      employment_duration: employeeData.employment_duration,
+      phone: employeeData.phone || null,
+      email: employeeData.email || null,
+      department: employeeData.department || null,
+      position: employeeData.position || null,
+      leave_date: employeeData.leave_date || null,
+      leave_reason: employeeData.leave_reason || null,
+      employment_duration: employeeData.employment_duration || null,
       status: 'pending',
     }
-    const { data, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = (await supabase
       .from('employees')
-      .insert(insertData)
+      .insert(insertData as any)
       .select()
-      .single()
+      .single()) as any
 
     if (error) {
       return { success: false, error: error.message }
@@ -72,8 +73,8 @@ export async function createDefaultFollowUpPlansAction(
         status: 'pending',
         reminder_sent: false,
       }
-
-      const { error } = await supabase.from('follow_up_plans').insert(insertData)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await supabase.from('follow_up_plans').insert(insertData as any)
 
       if (error) {
         return { success: false, error: error.message }
@@ -99,10 +100,18 @@ export async function importEmployeesAction(
   for (const [index, employee] of employees.entries()) {
     try {
       const insertData: EmployeeInsert = {
-        ...employee,
+        name: employee.name,
+        phone: employee.phone || null,
+        email: employee.email || null,
+        department: employee.department || null,
+        position: employee.position || null,
+        leave_date: employee.leave_date || null,
+        leave_reason: employee.leave_reason || null,
+        employment_duration: employee.employment_duration || null,
         status: 'pending',
       }
-      const { error } = await supabase.from('employees').insert(insertData)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await supabase.from('employees').insert(insertData as any)
 
       if (error) {
         results.failed++

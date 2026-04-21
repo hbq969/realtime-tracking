@@ -26,11 +26,9 @@ export function Header() {
           <Bell className="h-4 w-4" />
         </Button>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <User className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon">
+            <User className="h-4 w-4" />
+          </Button>} />
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>我的账户</DropdownMenuLabel>
             <DropdownMenuSeparator />
