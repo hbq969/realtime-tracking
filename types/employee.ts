@@ -2,21 +2,10 @@
  * 离职员工类型定义
  */
 
-export interface Employee {
-  id: string
-  name: string
-  phone: string
-  email: string
-  department: string
-  position: string
-  leave_date: string
-  leave_reason: string
-  employment_duration: number
-  reporter_id: string | null
-  status: 'pending' | 'followed'
-  created_at: string
-  updated_at: string
-}
+import type { Employee as DbEmployee } from '@/types/database'
+
+// 使用数据库类型作为基础
+export type Employee = DbEmployee
 
 export interface EmployeeFormData {
   name: string
