@@ -12,9 +12,11 @@ import {
   getSurveyResponseRate as getSurveyResponseRateDB,
   submitSurveyResponse as submitResponse,
   validateSurveyToken as validateToken,
+  getQuestionnaireById,
 } from '@/lib/db/questionnaires'
 import { getEmployeeById } from '@/lib/db/employees'
 import { sendQuestionnaireInvitation } from '@/lib/email'
+import { generateQRCodeBuffer } from '@/lib/qrcode'
 import type { Question } from '@/types/questionnaire'
 
 export async function createQuestionnaire(data: {
@@ -94,10 +96,23 @@ export async function sendQuestionnaireEmail(
   questionnaireId: string,
   questionnaireTitle: string,
   expiresInDays: number = 30,
-  smtpPassword: string
+  smtpPassword: string,
+  customEmailSubject?: string,
+  customEmailBody?: string
 ): Promise<{ success: number; failed: number; errors: string[] }> {
   const results = { success: 0, failed: 0, errors: [] as string[] }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+  // 获取问卷信息，生成二维码
+  const questionnaire = await getQuestionnaireById(questionnaireId)
+  let qrCodeBuffer: Buffer | null = null
+  if (questionnaire?.external_url) {
+    try {
+      qrCodeBuffer = await generateQRCodeBuffer(questionnaire.external_url)
+    } catch (error) {
+      console.error('生成二维码失败:', error)
+    }
+  }
 
   for (const employeeId of employeeIds) {
     try {
@@ -117,7 +132,7 @@ export async function sendQuestionnaireEmail(
 
       // 生成问卷令牌
       const token = await generateSurveyTokenDB(employeeId, questionnaireId, expiresInDays)
-      const surveyLink = `${appUrl}/survey/${token}`
+      const surveyLink = questionnaire?.external_url || `${appUrl}/survey/${token}`
 
       // 发送邮件
       const emailResult = await sendQuestionnaireInvitation({
@@ -127,6 +142,9 @@ export async function sendQuestionnaireEmail(
         surveyLink,
         expiresInDays,
         smtpPassword,
+        customSubject: customEmailSubject,
+        customBody: customEmailBody,
+        qrCodeBuffer: qrCodeBuffer || undefined,
       })
 
       if (emailResult.success) {
