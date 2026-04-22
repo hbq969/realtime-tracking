@@ -100,8 +100,12 @@ export async function createQuestionnaire(
   questionnaireData: {
     title: string
     description?: string
-    questions: Question[]
+    questions?: Question[]
     status?: 'draft' | 'active' | 'archived'
+    external_url?: string
+    external_type?: 'tencent' | null
+    email_subject?: string
+    email_body?: string
   }
 ): Promise<Questionnaire> {
   const supabase = await createSupabaseServerClient()
@@ -111,8 +115,12 @@ export async function createQuestionnaire(
     .insert({
       title: questionnaireData.title,
       description: questionnaireData.description || null,
-      questions: questionnaireData.questions,
+      questions: questionnaireData.questions || null,
       status: questionnaireData.status || 'draft',
+      external_url: questionnaireData.external_url || null,
+      external_type: questionnaireData.external_type || null,
+      email_subject: questionnaireData.email_subject || null,
+      email_body: questionnaireData.email_body || null,
     })
     .select()
     .single()
@@ -134,6 +142,10 @@ export async function updateQuestionnaire(
     description: string
     questions: Question[]
     status: 'draft' | 'active' | 'archived'
+    external_url: string
+    external_type: 'tencent' | null
+    email_subject: string
+    email_body: string
   }>
 ): Promise<Questionnaire> {
   const supabase = await createSupabaseServerClient()
