@@ -74,6 +74,10 @@ export interface Database {
           questions: Json
           status: 'draft' | 'active' | 'archived'
           created_at: string
+          external_url: string | null
+          external_type: string | null
+          email_subject: string | null
+          email_body: string | null
         }
         Insert: {
           id?: string
@@ -82,6 +86,10 @@ export interface Database {
           questions?: Json
           status?: 'draft' | 'active' | 'archived'
           created_at?: string
+          external_url?: string | null
+          external_type?: string | null
+          email_subject?: string | null
+          email_body?: string | null
         }
         Update: {
           id?: string
@@ -90,6 +98,10 @@ export interface Database {
           questions?: Json
           status?: 'draft' | 'active' | 'archived'
           created_at?: string
+          external_url?: string | null
+          external_type?: string | null
+          email_subject?: string | null
+          email_body?: string | null
         }
       }
       // 问卷回答表
