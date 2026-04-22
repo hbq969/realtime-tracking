@@ -172,8 +172,14 @@ export function QuestionnaireList({ questionnaires }: QuestionnaireListProps) {
             </div>
           </CardHeader>
           <CardContent className="flex-1">
-            <div className="text-sm text-slate-500">
-              {questionnaire.questions.length} 个问题
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              {questionnaire.external_type === 'tencent' ? (
+                <Badge variant="outline" className="text-xs">
+                  腾讯问卷
+                </Badge>
+              ) : (
+                <span>{questionnaire.questions?.length || 0} 个问题</span>
+              )}
             </div>
           </CardContent>
           <CardFooter className="pt-3 border-t">
