@@ -1,12 +1,8 @@
 /**
- * 报告数据服务
+ * 报告数据服务 (SQLite/sql.js 实现)
  */
-import { createSupabaseServerClient } from '@/lib/supabase/server'
-import type { Database } from '@/types/database'
+import { getDb, saveDatabase, generateId } from './index'
 import type { Report, ReportFilters, ReportContent } from '@/types/report'
-
-type ReportRow = Database['public']['Tables']['reports']['Row']
-type ReportInsert = Database['public']['Tables']['reports']['Insert']
 
 // 分页参数
 interface PaginationParams {
@@ -24,32 +20,47 @@ interface PaginatedResult<T> {
 }
 
 /**
+ * 将数据库行转换为 Report 对象
+ */
+function rowToReport(row: unknown[]): Report {
+  return {
+    id: row[0] as string,
+    title: row[1] as string,
+    type: row[2] as string,
+    filters: JSON.parse(row[3] as string || '{}'),
+    content: JSON.parse(row[4] as string || '{}'),
+    created_at: row[5] as string,
+  }
+}
+
+/**
  * 获取报告列表（服务端）
  */
 export async function getReports(
   pagination: PaginationParams = {}
 ): Promise<PaginatedResult<Report>> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
   const { page = 1, pageSize = 10 } = pagination
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
+  const offset = (page - 1) * pageSize
 
-  const { data, error, count } = await supabase
-    .from('reports')
-    .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(from, to)
+  // 查询总数
+  const countResults = db.exec('SELECT COUNT(*) as count FROM reports')
+  const total = countResults[0]?.values[0]?.[0] as number || 0
 
-  if (error) {
-    throw new Error(`获取报告列表失败: ${error.message}`)
-  }
+  // 查询数据
+  const dataResults = db.exec(
+    'SELECT * FROM reports ORDER BY created_at DESC LIMIT ? OFFSET ?',
+    [pageSize, offset]
+  )
+  const rows = dataResults[0]?.values || []
+  const data = rows.map(rowToReport)
 
   return {
-    data: (data || []) as Report[],
-    total: count || 0,
+    data,
+    total,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(total / pageSize),
   }
 }
 
@@ -57,19 +68,16 @@ export async function getReports(
  * 根据ID获取报告（服务端）
  */
 export async function getReportById(id: string): Promise<Report | null> {
-  const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('reports')
-    .select('*')
-    .eq('id', id)
-    .single()
+  const db = getDb()
 
-  if (error) {
-    if (error.code === 'PGRST116') return null
-    throw new Error(`获取报告信息失败: ${error.message}`)
+  const results = db.exec('SELECT * FROM reports WHERE id = ?', [id])
+  const rows = results[0]?.values || []
+
+  if (rows.length === 0) {
+    return null
   }
 
-  return data as Report
+  return rowToReport(rows[0])
 }
 
 /**
@@ -79,86 +87,97 @@ export async function generateReportContent(
   type: string,
   filters: ReportFilters = {}
 ): Promise<ReportContent> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
 
-  // 构建员工查询
-  let employeesQuery = supabase.from('employees').select('*')
+  // 构建员工查询条件
+  const conditions: string[] = []
+  const params: unknown[] = []
 
   if (filters.date_from) {
-    employeesQuery = employeesQuery.gte('leave_date', filters.date_from)
+    conditions.push('leave_date >= ?')
+    params.push(filters.date_from)
   }
   if (filters.date_to) {
-    employeesQuery = employeesQuery.lte('leave_date', filters.date_to)
+    conditions.push('leave_date <= ?')
+    params.push(filters.date_to)
   }
   if (filters.departments && filters.departments.length > 0) {
-    employeesQuery = employeesQuery.in('department', filters.departments)
+    const placeholders = filters.departments.map(() => '?').join(', ')
+    conditions.push(`department IN (${placeholders})`)
+    params.push(...filters.departments)
   }
   if (filters.leave_reasons && filters.leave_reasons.length > 0) {
-    employeesQuery = employeesQuery.in('leave_reason', filters.leave_reasons)
+    const placeholders = filters.leave_reasons.map(() => '?').join(', ')
+    conditions.push(`leave_reason IN (${placeholders})`)
+    params.push(...filters.leave_reasons)
   }
 
-  const { data: employees, error: employeesError } = await employeesQuery
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-  if (employeesError) {
-    throw new Error(`获取员工数据失败: ${employeesError.message}`)
-  }
+  // 获取员工数据
+  const employeesResults = db.exec(`SELECT * FROM employees ${whereClause}`, params)
+  const employeesRows = employeesResults[0]?.values || []
 
   // 获取回访记录
-  const { data: followUpRecords, error: recordsError } = await supabase
-    .from('follow_up_records')
-    .select('*')
-
-  if (recordsError) {
-    throw new Error(`获取回访记录失败: ${recordsError.message}`)
-  }
+  const followUpRecordsResults = db.exec('SELECT * FROM follow_up_records')
+  const followUpRecordsRows = followUpRecordsResults[0]?.values || []
 
   // 获取问卷回答
-  const { data: surveyResponses, error: responsesError } = await supabase
-    .from('survey_responses')
-    .select('*')
-
-  if (responsesError) {
-    throw new Error(`获取问卷回答失败: ${responsesError.message}`)
-  }
+  const surveyResponsesResults = db.exec('SELECT * FROM survey_responses')
+  const surveyResponsesRows = surveyResponsesResults[0]?.values || []
 
   // 计算统计数据
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const employeesAny = employees as any[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const followUpRecordsAny = followUpRecords as any[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const surveyResponsesAny = surveyResponses as any[]
+  const totalEmployees = employeesRows.length
 
-  const totalEmployees = employeesAny?.length || 0
-  const followedEmployees = new Set(followUpRecordsAny?.map((r: any) => r.employee_id)).size
-  const respondedEmployees = new Set(surveyResponsesAny?.map((r: any) => r.employee_id)).size
+  // 统计已回访员工（通过 employee_id 去重）
+  const followedEmployeeIds = new Set<string>()
+  for (const row of followUpRecordsRows) {
+    const employeeId = row[2] as string // employee_id 在第 3 列 (索引 2)
+    if (employeeId) {
+      followedEmployeeIds.add(employeeId)
+    }
+  }
+  const followedEmployees = followedEmployeeIds.size
+
+  // 统计已回答问卷员工（通过 employee_id 去重）
+  const respondedEmployeeIds = new Set<string>()
+  for (const row of surveyResponsesRows) {
+    const employeeId = row[1] as string // employee_id 在第 2 列 (索引 1)
+    if (employeeId) {
+      respondedEmployeeIds.add(employeeId)
+    }
+  }
+  const respondedEmployees = respondedEmployeeIds.size
 
   const followUpRate = totalEmployees > 0 ? (followedEmployees / totalEmployees) * 100 : 0
   const surveyResponseRate = totalEmployees > 0 ? (respondedEmployees / totalEmployees) * 100 : 0
 
   // 统计离职原因
   const leaveReasons: Record<string, number> = {}
-  employeesAny?.forEach((emp: any) => {
-    if (emp.leave_reason) {
-      leaveReasons[emp.leave_reason] = (leaveReasons[emp.leave_reason] || 0) + 1
+  for (const row of employeesRows) {
+    const leaveReason = row[8] as string | null // leave_reason 在第 9 列 (索引 8)
+    if (leaveReason) {
+      leaveReasons[leaveReason] = (leaveReasons[leaveReason] || 0) + 1
     }
-  })
+  }
 
   // 统计薪资变化
   const salaryChanges: Record<string, number> = {}
-  followUpRecordsAny?.forEach((record: any) => {
-    if (record.salary_change) {
-      salaryChanges[record.salary_change] = (salaryChanges[record.salary_change] || 0) + 1
+  for (const row of followUpRecordsRows) {
+    const salaryChange = row[7] as string | null // salary_change 在第 8 列 (索引 7)
+    if (salaryChange) {
+      salaryChanges[salaryChange] = (salaryChanges[salaryChange] || 0) + 1
     }
-  })
+  }
 
   // 统计新公司
   const companyCount: Record<string, number> = {}
-  followUpRecordsAny?.forEach((record: any) => {
-    if (record.new_company) {
-      companyCount[record.new_company] = (companyCount[record.new_company] || 0) + 1
+  for (const row of followUpRecordsRows) {
+    const newCompany = row[5] as string | null // new_company 在第 6 列 (索引 5)
+    if (newCompany) {
+      companyCount[newCompany] = (companyCount[newCompany] || 0) + 1
     }
-  })
+  }
 
   const newCompanies = Object.entries(companyCount)
     .map(([name, count]) => ({ name, count }))
@@ -167,11 +186,12 @@ export async function generateReportContent(
 
   // 收集建议
   const suggestions: string[] = []
-  followUpRecordsAny?.forEach((record: any) => {
-    if (record.suggestions) {
-      suggestions.push(record.suggestions)
+  for (const row of followUpRecordsRows) {
+    const suggestion = row[9] as string | null // suggestions 在第 10 列 (索引 9)
+    if (suggestion) {
+      suggestions.push(suggestion)
     }
-  })
+  }
 
   return {
     summary: {
@@ -194,40 +214,41 @@ export async function createReport(
   type: string,
   filters: ReportFilters = {}
 ): Promise<Report> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
 
   // 生成报告内容
   const content = await generateReportContent(type, filters)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
-    .from('reports')
-    .insert({
+  const id = generateId()
+  const now = new Date().toISOString()
+
+  db.run(
+    `INSERT INTO reports (
+      id, title, type, filters, content, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      id,
       title,
       type,
-      filters: filters,
-      content: content,
-    })
-    .select()
-    .single()
+      JSON.stringify(filters),
+      JSON.stringify(content),
+      now,
+    ]
+  )
 
-  if (error) {
-    throw new Error(`创建报告失败: ${error.message}`)
-  }
+  saveDatabase()
 
-  return data as Report
+  return getReportById(id) as Promise<Report>
 }
 
 /**
  * 删除报告（服务端）
  */
 export async function deleteReport(id: string): Promise<void> {
-  const supabase = await createSupabaseServerClient()
-  const { error } = await supabase.from('reports').delete().eq('id', id)
+  const db = getDb()
 
-  if (error) {
-    throw new Error(`删除报告失败: ${error.message}`)
-  }
+  db.run('DELETE FROM reports WHERE id = ?', [id])
+  saveDatabase()
 }
 
 /**
@@ -237,26 +258,22 @@ export async function getReportStats(): Promise<{
   total: number
   byType: Record<string, number>
 }> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
 
-  const { data, error } = await supabase.from('reports').select('type')
+  const results = db.exec('SELECT type FROM reports')
+  const rows = results[0]?.values || []
 
-  if (error) {
-    throw new Error(`获取报告统计失败: ${error.message}`)
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dataAny = data as any[]
   const stats = {
-    total: dataAny?.length || 0,
+    total: rows.length,
     byType: {} as Record<string, number>,
   }
 
-  dataAny?.forEach((report: any) => {
-    if (report.type) {
-      stats.byType[report.type] = (stats.byType[report.type] || 0) + 1
+  for (const row of rows) {
+    const type = row[0] as string | null
+    if (type) {
+      stats.byType[type] = (stats.byType[type] || 0) + 1
     }
-  })
+  }
 
   return stats
 }
