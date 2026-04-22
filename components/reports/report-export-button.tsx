@@ -19,7 +19,8 @@ export function ReportExportButton({ reportId, type }: ReportExportButtonProps) 
       const response = await fetch(`/api/reports/${reportId}/export?type=${type}`)
 
       if (!response.ok) {
-        throw new Error('导出失败')
+        const errorData = await response.json().catch(() => ({ error: '导出失败' }))
+        throw new Error(errorData.error || '导出失败')
       }
 
       const blob = await response.blob()
@@ -35,7 +36,7 @@ export function ReportExportButton({ reportId, type }: ReportExportButtonProps) 
       toast.success(`${type === 'pdf' ? 'PDF' : 'Word'} 导出成功`)
     } catch (error) {
       console.error('导出失败:', error)
-      toast.error('导出失败')
+      toast.error((error as Error).message || '导出失败')
     } finally {
       setIsExporting(false)
     }
