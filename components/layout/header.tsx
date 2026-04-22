@@ -1,17 +1,33 @@
 'use client'
 
-import { Bell, User } from 'lucide-react'
+import { Bell, User, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useRouter } from 'next/navigation'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 export function Header() {
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    try {
+      const supabase = createSupabaseBrowserClient()
+      await supabase.auth.signOut()
+      router.push('/login')
+      router.refresh()
+    } catch (error) {
+      console.error('退出登录失败:', error)
+    }
+  }
+
   return (
     <header className="h-16 border-b bg-white px-6 flex items-center justify-between">
       <div className="text-sm text-slate-500">
@@ -30,10 +46,14 @@ export function Header() {
             <User className="h-4 w-4" />
           </Button>} />
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>我的账户</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>个人设置</DropdownMenuItem>
-            <DropdownMenuItem>退出登录</DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>我的账户</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                退出登录
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

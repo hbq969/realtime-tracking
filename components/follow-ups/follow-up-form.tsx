@@ -43,6 +43,11 @@ interface FollowUpFormProps {
   isLoading?: boolean
 }
 
+const getLabel = (items: readonly { value: string; label: string }[], value: string): string => {
+  const found = items.find(item => item.value === value)
+  return found ? found.label : value
+}
+
 export function FollowUpForm({ onSubmit, isLoading }: FollowUpFormProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -70,7 +75,7 @@ export function FollowUpForm({ onSubmit, isLoading }: FollowUpFormProps) {
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue>{getLabel(CONTACT_METHODS, field.value)}</SelectValue>
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -93,7 +98,7 @@ export function FollowUpForm({ onSubmit, isLoading }: FollowUpFormProps) {
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue>{getLabel(CONTACT_RESULTS, field.value)}</SelectValue>
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -145,7 +150,7 @@ export function FollowUpForm({ onSubmit, isLoading }: FollowUpFormProps) {
               <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{getLabel(SALARY_CHANGES, field.value)}</SelectValue>
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>

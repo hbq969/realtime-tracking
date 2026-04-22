@@ -124,7 +124,9 @@ export function QuestionnaireForm({
             }}
           >
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue>
+                {selectedStatus === 'draft' ? '草稿' : selectedStatus === 'active' ? '启用' : '归档'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="draft">草稿</SelectItem>

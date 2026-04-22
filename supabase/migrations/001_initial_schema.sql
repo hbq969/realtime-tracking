@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS public.employees (
   phone TEXT NOT NULL,
   email TEXT NOT NULL,
   department TEXT NOT NULL,
+  team TEXT,
   position TEXT NOT NULL,
   leave_date DATE NOT NULL,
   leave_reason TEXT NOT NULL,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -15,6 +16,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { LEAVE_REASONS, DEPARTMENTS, POSITIONS } from '@/types/employee'
+import { updateEmployeeAction } from '@/lib/actions/employees'
+import type { Employee } from '@/types/database'
 
 const formSchema = z.object({
   name: z.string().min(1, '请输入姓名'),
@@ -33,51 +36,59 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>
 
-interface EmployeeFormProps {
-  defaultValues?: Partial<FormValues>
-  onSubmit: (data: FormValues) => Promise<void>
-  isEdit?: boolean
+interface EditEmployeeFormProps {
+  employee: Employee
 }
 
-export function EmployeeForm({ defaultValues, onSubmit, isEdit }: EmployeeFormProps) {
+export function EditEmployeeForm({ employee }: EditEmployeeFormProps) {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [selectedDepartment, setSelectedDepartment] = useState(defaultValues?.department || '')
-  const [selectedPosition, setSelectedPosition] = useState(defaultValues?.position || '')
-  const [selectedLeaveReason, setSelectedLeaveReason] = useState(defaultValues?.leave_reason || '')
+  const [selectedDepartment, setSelectedDepartment] = useState(employee.department || '')
+  const [selectedPosition, setSelectedPosition] = useState(employee.position || '')
+  const [selectedLeaveReason, setSelectedLeaveReason] = useState(employee.leave_reason || '')
 
   const {
     register,
     handleSubmit,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: '',
-      phone: '',
-      email: '',
-      department: '',
-      team: '',
-      position: '',
-      leave_date: '',
-      leave_reason: '',
-      employment_duration: 0,
-      ...defaultValues,
+      name: employee.name || '',
+      phone: employee.phone || '',
+      email: employee.email || '',
+      department: employee.department || '',
+      team: employee.team || '',
+      position: employee.position || '',
+      leave_date: employee.leave_date || '',
+      leave_reason: employee.leave_reason || '',
+      employment_duration: employee.employment_duration || 0,
     },
   })
 
   const handleFormSubmit = async (data: FormValues) => {
     setLoading(true)
     try {
-      // 处理"其他"选项的自定义值
       const submitData = {
-        ...data,
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
         department: data.department === '其他' && data.custom_department ? data.custom_department : data.department,
+        team: data.team,
         position: data.position === '其他' && data.custom_position ? data.custom_position : data.position,
+        leave_date: data.leave_date,
         leave_reason: data.leave_reason === '其他' && data.custom_leave_reason ? data.custom_leave_reason : data.leave_reason,
+        employment_duration: data.employment_duration,
       }
-      await onSubmit(submitData as FormValues)
+
+      const result = await updateEmployeeAction(employee.id, submitData)
+      if (result.success) {
+        router.push('/employees')
+        router.refresh()
+      } else {
+        alert(result.error || '更新失败')
+      }
     } finally {
       setLoading(false)
     }
@@ -272,9 +283,14 @@ export function EmployeeForm({ defaultValues, onSubmit, isEdit }: EmployeeFormPr
         </div>
       )}
 
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? '提交中...' : (isEdit ? '保存修改' : '添加员工')}
-      </Button>
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" onClick={() => router.back()}>
+          取消
+        </Button>
+        <Button type="submit" disabled={loading}>
+          {loading ? '保存中...' : '保存修改'}
+        </Button>
+      </div>
     </form>
   )
 }

@@ -12,6 +12,8 @@ import {
   submitSurveyResponse as submitResponse,
   validateSurveyToken as validateToken,
 } from '@/lib/db/questionnaires'
+import { getEmployeeById } from '@/lib/db/employees'
+import { sendQuestionnaireInvitation } from '@/lib/email'
 import type { Question } from '@/types/questionnaire'
 
 export async function createQuestionnaire(data: {
@@ -76,4 +78,63 @@ export async function validateSurveyToken(token: string): Promise<{
   error?: string
 }> {
   return validateToken(token)
+}
+
+/**
+ * 发送问卷邮件给员工
+ */
+export async function sendQuestionnaireEmail(
+  employeeIds: string[],
+  questionnaireId: string,
+  questionnaireTitle: string,
+  expiresInDays: number = 30,
+  smtpPassword: string
+): Promise<{ success: number; failed: number; errors: string[] }> {
+  const results = { success: 0, failed: 0, errors: [] as string[] }
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+  for (const employeeId of employeeIds) {
+    try {
+      // 获取员工信息
+      const employee = await getEmployeeById(employeeId)
+      if (!employee) {
+        results.failed++
+        results.errors.push(`员工 ${employeeId}: 员工不存在`)
+        continue
+      }
+
+      if (!employee.email) {
+        results.failed++
+        results.errors.push(`员工 ${employee.name}: 没有邮箱地址`)
+        continue
+      }
+
+      // 生成问卷令牌
+      const token = await generateSurveyTokenDB(employeeId, questionnaireId, expiresInDays)
+      const surveyLink = `${appUrl}/survey/${token}`
+
+      // 发送邮件
+      const emailResult = await sendQuestionnaireInvitation({
+        to: employee.email,
+        employeeName: employee.name,
+        questionnaireTitle,
+        surveyLink,
+        expiresInDays,
+        smtpPassword,
+      })
+
+      if (emailResult.success) {
+        results.success++
+      } else {
+        results.failed++
+        results.errors.push(`员工 ${employee.name}(${employee.email}): ${emailResult.error}`)
+      }
+    } catch (error) {
+      results.failed++
+      results.errors.push(`员工 ${employeeId}: ${(error as Error).message}`)
+    }
+  }
+
+  revalidatePath('/questionnaires')
+  return results
 }

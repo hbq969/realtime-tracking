@@ -109,7 +109,9 @@ export default function GenerateReportPage() {
                 }
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择报告类型" />
+                  <SelectValue>
+                    {REPORT_TYPES.find((t) => t.value === formData.type)?.label || '选择报告类型'}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {REPORT_TYPES.map((type) => (

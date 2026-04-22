@@ -12,6 +12,7 @@ export interface EmployeeFormData {
   phone: string
   email: string
   department: string
+  team?: string // 班组
   position: string
   leave_date: string
   leave_reason: string
@@ -30,15 +31,34 @@ export const LEAVE_REASONS = [
 ] as const
 
 export const DEPARTMENTS = [
-  '技术部',
-  '产品部',
-  '运营部',
+  '网信安全部',
+  '供应链管理部',
+  '质量管理部',
+  '计划部',
+  '数智化部',
+  '运行维护部',
+  '科技创新部',
+  '未来科技研究院',
+  '计算产品部',
+  '存储产品部',
+  '平台产品部',
+  '数据库产品部',
+  '应用产品部',
+  '云网产品部',
   '市场部',
-  '人力资源部',
-  '财务部',
-  '行政部',
+  '客户服务部',
+  '集成交付部',
+  '其他',
+] as const
+
+export const POSITIONS = [
+  '研发',
+  '产品经理',
+  '测试',
+  '运维',
   '其他',
 ] as const
 
 export type LeaveReason = (typeof LEAVE_REASONS)[number]
 export type Department = (typeof DEPARTMENTS)[number]
+export type Position = (typeof POSITIONS)[number]

@@ -22,6 +22,7 @@ export interface Database {
           phone: string | null
           email: string | null
           department: string | null
+          team: string | null
           position: string | null
           leave_date: string | null
           leave_reason: string | null
@@ -37,6 +38,7 @@ export interface Database {
           phone?: string | null
           email?: string | null
           department?: string | null
+          team?: string | null
           position?: string | null
           leave_date?: string | null
           leave_reason?: string | null
@@ -52,6 +54,7 @@ export interface Database {
           phone?: string | null
           email?: string | null
           department?: string | null
+          team?: string | null
           position?: string | null
           leave_date?: string | null
           leave_reason?: string | null

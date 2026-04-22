@@ -21,6 +21,7 @@ export async function createEmployeeAction(
       phone: employeeData.phone || null,
       email: employeeData.email || null,
       department: employeeData.department || null,
+      team: (employeeData as any).team || null,
       position: employeeData.position || null,
       leave_date: employeeData.leave_date || null,
       leave_reason: employeeData.leave_reason || null,
@@ -104,6 +105,7 @@ export async function importEmployeesAction(
         phone: employee.phone || null,
         email: employee.email || null,
         department: employee.department || null,
+        team: (employee as any).team || null,
         position: employee.position || null,
         leave_date: employee.leave_date || null,
         leave_reason: employee.leave_reason || null,
@@ -126,5 +128,81 @@ export async function importEmployeesAction(
   }
 
   revalidatePath('/employees')
+  return results
+}
+
+/**
+ * 更新员工
+ */
+export async function updateEmployeeAction(
+  id: string,
+  employeeData: Partial<EmployeeFormData>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createSupabaseServerClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const supabaseAny = supabase as any
+    const updateData = {
+      ...employeeData,
+      updated_at: new Date().toISOString(),
+    }
+    const { error } = await supabaseAny.from('employees').update(updateData).eq('id', id)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/employees')
+    revalidatePath(`/employees/${id}`)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+}
+
+/**
+ * 删除员工
+ */
+export async function deleteEmployeeAction(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createSupabaseServerClient()
+    const { error } = await supabase.from('employees').delete().eq('id', id)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/employees')
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+}
+
+/**
+ * 批量删除员工
+ */
+export async function batchDeleteEmployeesAction(
+  ids: string[]
+): Promise<{ success: number; failed: number; errors: string[] }> {
+  const results = { success: 0, failed: 0, errors: [] as string[] }
+
+  for (const id of ids) {
+    try {
+      const result = await deleteEmployeeAction(id)
+      if (result.success) {
+        results.success++
+      } else {
+        results.failed++
+        results.errors.push(`ID ${id}: ${result.error}`)
+      }
+    } catch (err) {
+      results.failed++
+      results.errors.push(`ID ${id}: ${(err as Error).message}`)
+    }
+  }
+
   return results
 }

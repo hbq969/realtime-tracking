@@ -29,6 +29,11 @@ const questionTypes: { value: QuestionType; label: string }[] = [
   { value: 'rating', label: '评分题' },
 ]
 
+const getQuestionTypeLabel = (type: QuestionType): string => {
+  const found = questionTypes.find(t => t.value === type)
+  return found ? found.label : type
+}
+
 export function QuestionEditor({ questions, onChange }: QuestionEditorProps) {
   const addQuestion = () => {
     const newQuestion: Question = {
@@ -122,7 +127,7 @@ export function QuestionEditor({ questions, onChange }: QuestionEditorProps) {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{getQuestionTypeLabel(question.type)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {questionTypes.map((type) => (
