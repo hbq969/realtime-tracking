@@ -6,7 +6,10 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { FollowUpForm } from '@/components/follow-ups/follow-up-form'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
+import { ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 import type { FollowUpPlan } from '@/types/follow-up'
 
 export default function FollowUpDetailPage({
@@ -125,6 +128,14 @@ export default function FollowUpDetailPage({
 
   return (
     <div className="max-w-2xl mx-auto">
+      <div className="mb-6">
+        <Link href="/follow-ups">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            返回回访列表
+          </Button>
+        </Link>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

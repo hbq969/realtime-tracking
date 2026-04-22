@@ -10,10 +10,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { MoreVertical, Eye, Edit, Trash2, Copy, Link2 } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { MoreVertical, Eye, Edit, Trash2, Copy, Link2, Archive } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
-import { updateQuestionnaire, generateSurveyToken, getSurveyResponseRate } from '@/lib/actions/questionnaires'
+import { updateQuestionnaire, deleteQuestionnaire } from '@/lib/actions/questionnaires'
+import { toast } from 'sonner'
 
 interface QuestionnaireListProps {
   questionnaires: Questionnaire[]
@@ -21,8 +33,8 @@ interface QuestionnaireListProps {
 
 const statusLabels = {
   draft: '草稿',
-  active: '启用',
-  archived: '归档',
+  active: '已发布',
+  archived: '已归档',
 }
 
 const statusVariants = {
@@ -31,9 +43,37 @@ const statusVariants = {
   archived: 'outline',
 } as const
 
+function DeleteButton({ questionnaire, onDelete }: { questionnaire: Questionnaire; onDelete: (id: string) => void }) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger render={
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50">
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      } />
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>确认删除</AlertDialogTitle>
+          <AlertDialogDescription>
+            确定要删除问卷「{questionnaire.title}」吗？此操作不可撤销。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>取消</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-red-500 hover:bg-red-600"
+            onClick={() => onDelete(questionnaire.id)}
+          >
+            删除
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 export function QuestionnaireList({ questionnaires }: QuestionnaireListProps) {
   const [list, setList] = useState(questionnaires)
-  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const handleArchive = async (id: string) => {
     try {
@@ -55,13 +95,14 @@ export function QuestionnaireList({ questionnaires }: QuestionnaireListProps) {
     }
   }
 
-  const copyLink = async (id: string) => {
-    const baseUrl = window.location.origin
-    // 这里只是示例，实际应该生成真实令牌
-    const link = `${baseUrl}/survey/TOKEN_PLACEHOLDER`
-    await navigator.clipboard.writeText(link)
-    setCopiedId(id)
-    setTimeout(() => setCopiedId(null), 2000)
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteQuestionnaire(id)
+      setList(list.filter(q => q.id !== id))
+    } catch (error) {
+      console.error('删除失败:', error)
+      alert('删除失败')
+    }
   }
 
   if (list.length === 0) {
@@ -86,43 +127,48 @@ export function QuestionnaireList({ questionnaires }: QuestionnaireListProps) {
                   {questionnaire.description || '暂无描述'}
                 </CardDescription>
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>} />
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem>
-                    <Link href={`/questionnaires/${questionnaire.id}`} className="flex items-center">
-                      <Eye className="h-4 w-4 mr-2" />
-                      查看详情
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Link href={`/questionnaires/${questionnaire.id}`} className="flex items-center">
-                      <Edit className="h-4 w-4 mr-2" />
-                      编辑
-                    </Link>
-                  </DropdownMenuItem>
-                  {questionnaire.status === 'active' && (
-                    <DropdownMenuItem onClick={() => copyLink(questionnaire.id)}>
-                      <Link2 className="h-4 w-4 mr-2" />
-                      {copiedId === questionnaire.id ? '已复制!' : '复制链接'}
+              <div className="flex items-center gap-1">
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>} />
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem>
+                      <Link href={`/questionnaires/${questionnaire.id}`} className="flex items-center">
+                        <Eye className="h-4 w-4 mr-2" />
+                        查看详情
+                      </Link>
                     </DropdownMenuItem>
-                  )}
-                  {questionnaire.status === 'draft' && (
-                    <DropdownMenuItem onClick={() => handleActivate(questionnaire.id)}>
-                      <Copy className="h-4 w-4 mr-2" />
-                      启用问卷
-                    </DropdownMenuItem>
-                  )}
-                  {questionnaire.status === 'active' && (
-                    <DropdownMenuItem onClick={() => handleArchive(questionnaire.id)}>
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      归档
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    {questionnaire.status === 'draft' && (
+                      <DropdownMenuItem onClick={() => handleActivate(questionnaire.id)}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        发布问卷
+                      </DropdownMenuItem>
+                    )}
+                    {questionnaire.status === 'active' && (
+                      <>
+                        <DropdownMenuItem>
+                          <Link href={`/questionnaires/${questionnaire.id}?tab=send`} className="flex items-center">
+                            <Link2 className="h-4 w-4 mr-2" />
+                            发送问卷
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleArchive(questionnaire.id)}>
+                          <Archive className="h-4 w-4 mr-2" />
+                          归档
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {questionnaire.status === 'archived' && (
+                      <DropdownMenuItem onClick={() => handleActivate(questionnaire.id)}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        重新启用
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DeleteButton questionnaire={questionnaire} onDelete={handleDelete} />
+              </div>
             </div>
           </CardHeader>
           <CardContent className="flex-1">

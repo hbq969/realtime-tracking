@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache'
 import {
   createQuestionnaire as createQuestionnaireDB,
   updateQuestionnaire as updateQuestionnaireDB,
+  deleteQuestionnaire as deleteQuestionnaireDB,
   generateSurveyToken as generateSurveyTokenDB,
   getSurveyResponseRate as getSurveyResponseRateDB,
   submitSurveyResponse as submitResponse,
@@ -40,6 +41,11 @@ export async function updateQuestionnaire(
   revalidatePath('/questionnaires')
   revalidatePath(`/questionnaires/${id}`)
   return result
+}
+
+export async function deleteQuestionnaire(id: string): Promise<void> {
+  await deleteQuestionnaireDB(id)
+  revalidatePath('/questionnaires')
 }
 
 export async function generateSurveyToken(

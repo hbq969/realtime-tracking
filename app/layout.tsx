@@ -16,7 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" className="h-full antialiased">
-      <body className={`${inter.className} min-h-full flex flex-col`}>{children}</body>
+      <body className={`${inter.className} min-h-full flex flex-col`} suppressHydrationWarning>{children}</body>
     </html>
   );
 }

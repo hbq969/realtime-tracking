@@ -308,6 +308,22 @@ export async function getSurveyResponseRate(
 }
 
 /**
+ * 删除问卷（服务端）
+ */
+export async function deleteQuestionnaire(id: string): Promise<void> {
+  const supabase = await createSupabaseServerClient()
+
+  const { error } = await supabase
+    .from('questionnaires')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    throw new Error(`删除问卷失败: ${error.message}`)
+  }
+}
+
+/**
  * 获取活跃问卷（客户端）
  */
 export async function getActiveQuestionnairesClient(): Promise<Questionnaire[]> {

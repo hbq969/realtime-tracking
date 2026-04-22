@@ -2,13 +2,18 @@ import { notFound } from 'next/navigation'
 import { getQuestionnaireById, getSurveyResponseRate } from '@/lib/db/questionnaires'
 import { getEmployees } from '@/lib/db/employees'
 import { QuestionnaireDetail } from '@/components/questionnaires/questionnaire-detail'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string }>
 }
 
-export default async function QuestionnaireDetailPage({ params }: PageProps) {
+export default async function QuestionnaireDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
+  const { tab } = await searchParams
   const questionnaire = await getQuestionnaireById(id)
 
   if (!questionnaire) {
@@ -19,10 +24,21 @@ export default async function QuestionnaireDetailPage({ params }: PageProps) {
   const responseRate = await getSurveyResponseRate(id)
 
   return (
-    <QuestionnaireDetail
-      questionnaire={questionnaire}
-      employees={employees}
-      responseRate={responseRate}
-    />
+    <div className="space-y-6">
+      <div>
+        <Link href="/questionnaires">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            返回问卷列表
+          </Button>
+        </Link>
+      </div>
+      <QuestionnaireDetail
+        questionnaire={questionnaire}
+        employees={employees}
+        responseRate={responseRate}
+        defaultTab={tab || 'questions'}
+      />
+    </div>
   )
 }

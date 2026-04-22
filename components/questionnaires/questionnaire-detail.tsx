@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, use } from 'react'
 import type { Questionnaire, Question } from '@/types/questionnaire'
 import type { Employee } from '@/types/database'
 import { QuestionnaireForm } from './questionnaire-form'
@@ -39,12 +39,13 @@ interface QuestionnaireDetailProps {
     totalResponded: number
     responseRate: number
   }
+  defaultTab?: string
 }
 
 const statusLabels = {
   draft: '草稿',
-  active: '启用',
-  archived: '归档',
+  active: '已发布',
+  archived: '已归档',
 }
 
 const statusVariants = {
@@ -57,6 +58,7 @@ export function QuestionnaireDetail({
   questionnaire: initialQuestionnaire,
   employees,
   responseRate: initialResponseRate,
+  defaultTab = 'questions',
 }: QuestionnaireDetailProps) {
   const router = useRouter()
   const [questionnaire, setQuestionnaire] = useState(initialQuestionnaire)
@@ -223,7 +225,7 @@ export function QuestionnaireDetail({
       </div>
 
       {/* 标签页 */}
-      <Tabs defaultValue="questions">
+      <Tabs defaultValue={defaultTab}>
         <TabsList>
           <TabsTrigger value="questions">
             <BarChart3 className="h-4 w-4 mr-2" />
@@ -292,6 +294,28 @@ export function QuestionnaireDetail({
         </TabsContent>
 
         <TabsContent value="send" className="mt-4">
+          {questionnaire.status !== 'active' ? (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <p className="text-slate-500 mb-4">
+                  {questionnaire.status === 'draft'
+                    ? '问卷尚未发布，请先发布问卷后再发送'
+                    : '问卷已归档，无法发送'}
+                </p>
+                {questionnaire.status === 'draft' && (
+                  <Button
+                    onClick={async () => {
+                      const updated = await updateQuestionnaire(questionnaire.id, { status: 'active' })
+                      setQuestionnaire(updated)
+                      toast.success('问卷已发布')
+                    }}
+                  >
+                    立即发布
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
           <Card>
             <CardHeader>
               <CardTitle>发送问卷</CardTitle>
@@ -406,6 +430,7 @@ export function QuestionnaireDetail({
               )}
             </CardContent>
           </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="stats" className="mt-4">

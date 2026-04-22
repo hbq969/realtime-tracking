@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation'
 import { EmployeeImport } from '@/components/employees/employee-import'
 import { importEmployeesAction, createDefaultFollowUpPlansAction } from '@/lib/actions/employees'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 
 export default function ImportEmployeesPage() {
   const router = useRouter()
@@ -44,6 +47,14 @@ export default function ImportEmployeesPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      <div className="mb-6">
+        <Link href="/employees">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            返回员工列表
+          </Button>
+        </Link>
+      </div>
       <EmployeeImport onImport={handleImport} />
     </div>
   )
