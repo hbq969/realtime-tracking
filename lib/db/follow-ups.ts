@@ -1,15 +1,8 @@
 /**
- * 回访数据服务
+ * 回访数据服务 (SQLite/sql.js 实现)
  */
-import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import type { Database } from '@/types/database'
+import { getDb, saveDatabase, generateId } from './index'
 import type { FollowUpPlan, FollowUpRecord, FollowUpRecordFormData } from '@/types/follow-up'
-
-type FollowUpPlanRow = Database['public']['Tables']['follow_up_plans']['Row']
-type FollowUpPlanInsert = Database['public']['Tables']['follow_up_plans']['Insert']
-type FollowUpPlanUpdate = Database['public']['Tables']['follow_up_plans']['Update']
-type FollowUpRecordInsert = Database['public']['Tables']['follow_up_records']['Insert']
 
 // 分页参数
 interface PaginationParams {
@@ -36,79 +29,121 @@ interface FollowUpFilters {
 }
 
 /**
+ * 将数据库行转换为 FollowUpPlan 对象
+ */
+function rowToFollowUpPlan(row: unknown[]): FollowUpPlan {
+  return {
+    id: row[0] as string,
+    employee_id: row[1] as string,
+    plan_date: row[2] as string,
+    follow_up_type: row[3] as '1m' | '3m' | '6m' | 'custom',
+    status: row[4] as 'pending' | 'completed' | 'overdue',
+    reminder_sent: row[5] === 1,
+    created_at: row[6] as string,
+  }
+}
+
+/**
+ * 将数据库行转换为 FollowUpRecord 对象
+ */
+function rowToFollowUpRecord(row: unknown[]): FollowUpRecord {
+  return {
+    id: row[0] as string,
+    plan_id: row[1] as string,
+    employee_id: row[2] as string,
+    contact_method: row[3] as 'phone' | 'wechat' | 'email',
+    contact_result: row[4] as 'connected' | 'no_answer' | 'refused',
+    new_company: row[5] as string,
+    new_position: row[6] as string,
+    salary_change: row[7] as 'increase' | 'decrease' | 'same',
+    personal_feeling: row[8] as string,
+    suggestions: row[9] as string,
+    created_at: row[10] as string,
+  }
+}
+
+/**
  * 获取回访计划列表（服务端）
  */
 export async function getFollowUpPlans(
   filters: FollowUpFilters = {},
   pagination: PaginationParams = {}
 ): Promise<PaginatedResult<FollowUpPlan>> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
   const { page = 1, pageSize = 10 } = pagination
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
+  const offset = (page - 1) * pageSize
 
-  let query = supabase
-    .from('follow_up_plans')
-    .select(
-      `
-      *,
-      employees (
-        name,
-        phone,
-        department,
-        team
-      ),
-      follow_up_records (
-        created_at
-      )
-    `,
-      { count: 'exact' }
-    )
-    .order('plan_date', { ascending: true })
+  // 构建 WHERE 子句
+  const conditions: string[] = []
+  const params: unknown[] = []
 
   if (filters.status) {
-    query = query.eq('status', filters.status)
+    conditions.push('status = ?')
+    params.push(filters.status)
   }
   if (filters.followUpType) {
-    query = query.eq('follow_up_type', filters.followUpType)
+    conditions.push('follow_up_type = ?')
+    params.push(filters.followUpType)
   }
   if (filters.dateFrom) {
-    query = query.gte('plan_date', filters.dateFrom)
+    conditions.push('plan_date >= ?')
+    params.push(filters.dateFrom)
   }
   if (filters.dateTo) {
-    query = query.lte('plan_date', filters.dateTo)
+    conditions.push('plan_date <= ?')
+    params.push(filters.dateTo)
   }
   if (filters.employeeId) {
-    query = query.eq('employee_id', filters.employeeId)
+    conditions.push('employee_id = ?')
+    params.push(filters.employeeId)
   }
 
-  const { data, error, count } = await query.range(from, to)
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-  if (error) {
-    throw new Error(`获取回访计划失败: ${error.message}`)
+  // 查询总数
+  const countSql = `SELECT COUNT(*) as count FROM follow_up_plans ${whereClause}`
+  const countResults = db.exec(countSql, params)
+  const total = countResults[0]?.values[0]?.[0] as number || 0
+
+  // 查询数据
+  const dataSql = `SELECT * FROM follow_up_plans ${whereClause} ORDER BY plan_date ASC LIMIT ? OFFSET ?`
+  const dataResults = db.exec(dataSql, [...params, pageSize, offset])
+  const rows = dataResults[0]?.values || []
+  const plans = rows.map(rowToFollowUpPlan)
+
+  // 查询关联的员工信息
+  for (const plan of plans) {
+    const employeeResults = db.exec(
+      'SELECT name, phone, department, team FROM employees WHERE id = ?',
+      [plan.employee_id]
+    )
+    const employeeRow = employeeResults[0]?.values?.[0]
+    if (employeeRow) {
+      plan.employee = {
+        name: employeeRow[0] as string,
+        phone: employeeRow[1] as string,
+        department: employeeRow[2] as string,
+        team: employeeRow[3] as string | undefined,
+      }
+    }
+
+    // 查询回访记录创建时间
+    const recordResults = db.exec(
+      'SELECT created_at FROM follow_up_records WHERE plan_id = ? LIMIT 1',
+      [plan.id]
+    )
+    const recordRow = recordResults[0]?.values?.[0]
+    if (recordRow) {
+      plan.followUpRecordCreatedAt = recordRow[0] as string
+    }
   }
-
-  // 转换数据格式
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const plans = ((data || []) as any[]).map((item) => ({
-    ...item,
-    employee: item.employees
-      ? {
-          name: item.employees.name,
-          phone: item.employees.phone,
-          department: item.employees.department,
-          team: item.employees.team,
-        }
-      : undefined,
-    followUpRecordCreatedAt: item.follow_up_records?.[0]?.created_at || null,
-  })) as FollowUpPlan[]
 
   return {
     data: plans,
-    total: count || 0,
+    total,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(total / pageSize),
   }
 }
 
@@ -116,38 +151,32 @@ export async function getFollowUpPlans(
  * 根据ID获取回访计划（服务端）
  */
 export async function getFollowUpPlanById(id: string): Promise<FollowUpPlan | null> {
-  const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('follow_up_plans')
-    .select(
-      `
-      *,
-      employees (
-        name,
-        phone,
-        department
-      )
-    `
-    )
-    .eq('id', id)
-    .single()
+  const db = getDb()
 
-  if (error) {
-    if (error.code === 'PGRST116') return null
-    throw new Error(`获取回访计划失败: ${error.message}`)
+  const results = db.exec('SELECT * FROM follow_up_plans WHERE id = ?', [id])
+  const rows = results[0]?.values || []
+
+  if (rows.length === 0) {
+    return null
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return {
-    ...(data as any),
-    employee: (data as any).employees
-      ? {
-          name: (data as any).employees.name,
-          phone: (data as any).employees.phone,
-          department: (data as any).employees.department,
-        }
-      : undefined,
-  } as FollowUpPlan
+  const plan = rowToFollowUpPlan(rows[0])
+
+  // 查询关联的员工信息
+  const employeeResults = db.exec(
+    'SELECT name, phone, department FROM employees WHERE id = ?',
+    [plan.employee_id]
+  )
+  const employeeRow = employeeResults[0]?.values?.[0]
+  if (employeeRow) {
+    plan.employee = {
+      name: employeeRow[0] as string,
+      phone: employeeRow[1] as string,
+      department: employeeRow[2] as string,
+    }
+  }
+
+  return plan
 }
 
 /**
@@ -160,23 +189,28 @@ export async function createFollowUpPlan(
     follow_up_type: '1m' | '3m' | '6m' | 'custom'
   }
 ): Promise<FollowUpPlan> {
-  const supabase = await createSupabaseServerClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
-    .from('follow_up_plans')
-    .insert({
-      ...planData,
-      status: 'pending',
-      reminder_sent: false,
-    })
-    .select()
-    .single()
+  const db = getDb()
+  const id = generateId()
+  const now = new Date().toISOString()
 
-  if (error) {
-    throw new Error(`创建回访计划失败: ${error.message}`)
-  }
+  db.run(
+    `INSERT INTO follow_up_plans (
+      id, employee_id, plan_date, follow_up_type, status, reminder_sent, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      planData.employee_id,
+      planData.plan_date,
+      planData.follow_up_type,
+      'pending',
+      0,
+      now,
+    ]
+  )
 
-  return data as FollowUpPlan
+  saveDatabase()
+
+  return getFollowUpPlanById(id) as Promise<FollowUpPlan>
 }
 
 /**
@@ -187,52 +221,49 @@ export async function createFollowUpRecord(
   employeeId: string,
   recordData: FollowUpRecordFormData
 ): Promise<FollowUpRecord> {
-  const supabase = await createSupabaseServerClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabaseAny = supabase as any
+  const db = getDb()
 
   // 创建回访记录
-  const { data, error } = await supabaseAny
-    .from('follow_up_records')
-    .insert({
-      plan_id: planId,
-      employee_id: employeeId,
-      contact_method: recordData.contact_method,
-      contact_result: recordData.contact_result,
-      new_company: recordData.new_company || null,
-      new_position: recordData.new_position || null,
-      salary_change: recordData.salary_change || null,
-      personal_feeling: recordData.personal_feeling || null,
-      suggestions: recordData.suggestions || null,
-    })
-    .select()
-    .single()
+  const id = generateId()
+  const now = new Date().toISOString()
 
-  if (error) {
-    throw new Error(`创建回访记录失败: ${error.message}`)
-  }
+  db.run(
+    `INSERT INTO follow_up_records (
+      id, plan_id, employee_id, contact_method, contact_result,
+      new_company, new_position, salary_change, personal_feeling, suggestions, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      planId,
+      employeeId,
+      recordData.contact_method,
+      recordData.contact_result,
+      recordData.new_company || null,
+      recordData.new_position || null,
+      recordData.salary_change || null,
+      recordData.personal_feeling || null,
+      recordData.suggestions || null,
+      now,
+    ]
+  )
 
   // 更新回访计划状态
-  const { error: updateError } = await supabaseAny
-    .from('follow_up_plans')
-    .update({ status: 'completed' })
-    .eq('id', planId)
-
-  if (updateError) {
-    throw new Error(`更新回访计划状态失败: ${updateError.message}`)
-  }
+  db.run('UPDATE follow_up_plans SET status = ? WHERE id = ?', ['completed', planId])
 
   // 更新员工状态
-  const { error: employeeUpdateError } = await supabaseAny
-    .from('employees')
-    .update({ status: 'followed', updated_at: new Date().toISOString() })
-    .eq('id', employeeId)
+  db.run('UPDATE employees SET status = ?, updated_at = ? WHERE id = ?', ['followed', now, employeeId])
 
-  if (employeeUpdateError) {
-    throw new Error(`更新员工状态失败: ${employeeUpdateError.message}`)
+  saveDatabase()
+
+  // 返回新创建的记录
+  const results = db.exec('SELECT * FROM follow_up_records WHERE id = ?', [id])
+  const rows = results[0]?.values || []
+
+  if (rows.length === 0) {
+    throw new Error('创建回访记录失败: 无法获取创建的记录')
   }
 
-  return data as unknown as FollowUpRecord
+  return rowToFollowUpRecord(rows[0])
 }
 
 /**
@@ -241,43 +272,41 @@ export async function createFollowUpRecord(
 export async function getUpcomingFollowUps(
   days: number = 7
 ): Promise<FollowUpPlan[]> {
-  const supabase = await createSupabaseServerClient()
-  const today = new Date()
+  const db = getDb()
+  const today = new Date().toISOString().split('T')[0]
   const endDate = new Date()
-  endDate.setDate(today.getDate() + days)
+  endDate.setDate(endDate.getDate() + days)
+  const endDateStr = endDate.toISOString().split('T')[0]
 
-  const { data, error } = await supabase
-    .from('follow_up_plans')
-    .select(
-      `
-      *,
-      employees (
-        name,
-        phone,
-        department
-      )
-    `
+  const results = db.exec(
+    `SELECT * FROM follow_up_plans
+     WHERE status = 'pending'
+     AND plan_date >= ?
+     AND plan_date <= ?
+     ORDER BY plan_date ASC`,
+    [today, endDateStr]
+  )
+
+  const rows = results[0]?.values || []
+  const plans = rows.map(rowToFollowUpPlan)
+
+  // 查询关联的员工信息
+  for (const plan of plans) {
+    const employeeResults = db.exec(
+      'SELECT name, phone, department FROM employees WHERE id = ?',
+      [plan.employee_id]
     )
-    .eq('status', 'pending')
-    .gte('plan_date', today.toISOString().split('T')[0])
-    .lte('plan_date', endDate.toISOString().split('T')[0])
-    .order('plan_date', { ascending: true })
-
-  if (error) {
-    throw new Error(`获取即将到期的回访计划失败: ${error.message}`)
+    const employeeRow = employeeResults[0]?.values?.[0]
+    if (employeeRow) {
+      plan.employee = {
+        name: employeeRow[0] as string,
+        phone: employeeRow[1] as string,
+        department: employeeRow[2] as string,
+      }
+    }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return ((data || []) as any[]).map((item) => ({
-    ...item,
-    employee: item.employees
-      ? {
-          name: item.employees.name,
-          phone: item.employees.phone,
-          department: item.employees.department,
-        }
-      : undefined,
-  })) as FollowUpPlan[]
+  return plans
 }
 
 /**
@@ -291,31 +320,19 @@ export async function getFollowUpStats(): Promise<{
   byType: Record<string, number>
   byContactMethod: Record<string, number>
 }> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
 
-  // 获取计划统计
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: plans, error: plansError } = await (supabase as any)
-    .from('follow_up_plans')
-    .select('status, follow_up_type, plan_date')
+  // 获取所有计划
+  const plansResults = db.exec('SELECT status, follow_up_type, plan_date FROM follow_up_plans')
+  const plansRows = plansResults[0]?.values || []
 
-  if (plansError) {
-    throw new Error(`获取回访计划统计失败: ${plansError.message}`)
-  }
-
-  // 获取记录统计
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: records, error: recordsError } = await (supabase as any)
-    .from('follow_up_records')
-    .select('contact_method')
-
-  if (recordsError) {
-    throw new Error(`获取回访记录统计失败: ${recordsError.message}`)
-  }
+  // 获取所有记录的联系方式
+  const recordsResults = db.exec('SELECT contact_method FROM follow_up_records')
+  const recordsRows = recordsResults[0]?.values || []
 
   const today = new Date().toISOString().split('T')[0]
   const stats = {
-    total: plans?.length || 0,
+    total: plansRows.length,
     pending: 0,
     completed: 0,
     overdue: 0,
@@ -324,34 +341,35 @@ export async function getFollowUpStats(): Promise<{
   }
 
   // 统计计划状态
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  plans?.forEach((plan: any) => {
-    if (plan.status === 'pending') {
+  for (const row of plansRows) {
+    const status = row[0] as string
+    const followUpType = row[1] as string | null
+    const planDate = row[2] as string | null
+
+    if (status === 'pending') {
       // 检查是否逾期
-      const planDate = plan.plan_date
       if (planDate && planDate < today) {
         stats.overdue++
       } else {
         stats.pending++
       }
-    } else if (plan.status === 'completed') {
+    } else if (status === 'completed') {
       stats.completed++
     }
 
     // 按类型统计
-    if (plan.follow_up_type) {
-      stats.byType[plan.follow_up_type] = (stats.byType[plan.follow_up_type] || 0) + 1
+    if (followUpType) {
+      stats.byType[followUpType] = (stats.byType[followUpType] || 0) + 1
     }
-  })
+  }
 
   // 统计联系方式
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  records?.forEach((record: any) => {
-    if (record.contact_method) {
-      stats.byContactMethod[record.contact_method] =
-        (stats.byContactMethod[record.contact_method] || 0) + 1
+  for (const row of recordsRows) {
+    const contactMethod = row[0] as string | null
+    if (contactMethod) {
+      stats.byContactMethod[contactMethod] = (stats.byContactMethod[contactMethod] || 0) + 1
     }
-  })
+  }
 
   return stats
 }
@@ -385,87 +403,32 @@ export async function createDefaultFollowUpPlans(
 export async function getFollowUpRecordsByEmployee(
   employeeId: string
 ): Promise<FollowUpRecord[]> {
-  const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('follow_up_records')
-    .select('*')
-    .eq('employee_id', employeeId)
-    .order('created_at', { ascending: false })
+  const db = getDb()
 
-  if (error) {
-    throw new Error(`获取员工回访记录失败: ${error.message}`)
-  }
+  const results = db.exec(
+    'SELECT * FROM follow_up_records WHERE employee_id = ? ORDER BY created_at DESC',
+    [employeeId]
+  )
 
-  return (data || []) as unknown as FollowUpRecord[]
+  const rows = results[0]?.values || []
+  return rows.map(rowToFollowUpRecord)
 }
 
 /**
  * 客户端获取回访计划列表
+ * 注：SQLite 不支持直接客户端访问，返回空结果
  */
 export async function getFollowUpPlansClient(
   filters: FollowUpFilters = {},
   pagination: PaginationParams = {}
 ): Promise<PaginatedResult<FollowUpPlan>> {
-  const supabase = createSupabaseBrowserClient()
-  const { page = 1, pageSize = 10 } = pagination
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
-
-  let query = supabase
-    .from('follow_up_plans')
-    .select(
-      `
-      *,
-      employees (
-        name,
-        phone,
-        department,
-        team
-      )
-    `,
-      { count: 'exact' }
-    )
-    .order('plan_date', { ascending: true })
-
-  if (filters.status) {
-    query = query.eq('status', filters.status)
-  }
-  if (filters.followUpType) {
-    query = query.eq('follow_up_type', filters.followUpType)
-  }
-  if (filters.dateFrom) {
-    query = query.gte('plan_date', filters.dateFrom)
-  }
-  if (filters.dateTo) {
-    query = query.lte('plan_date', filters.dateTo)
-  }
-  if (filters.employeeId) {
-    query = query.eq('employee_id', filters.employeeId)
-  }
-
-  const { data, error, count } = await query.range(from, to)
-
-  if (error) {
-    throw new Error(`获取回访计划失败: ${error.message}`)
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const plans = ((data || []) as any[]).map((item) => ({
-    ...item,
-    employee: item.employees
-      ? {
-          name: item.employees.name,
-          phone: item.employees.phone,
-          department: item.employees.department,
-        }
-      : undefined,
-  })) as FollowUpPlan[]
-
+  // SQLite 实现不支持客户端直接访问，需要通过 API
+  // 返回空结果
   return {
-    data: plans,
-    total: count || 0,
-    page,
-    pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    data: [],
+    total: 0,
+    page: pagination.page || 1,
+    pageSize: pagination.pageSize || 10,
+    totalPages: 0,
   }
 }
