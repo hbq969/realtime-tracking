@@ -18,6 +18,7 @@ interface EmailPreviewProps {
   initialBody?: string
   onSubjectChange?: (subject: string) => void
   onBodyChange?: (body: string) => void
+  hasQrCode?: boolean
 }
 
 export function EmailPreview({
@@ -29,6 +30,7 @@ export function EmailPreview({
   initialBody,
   onSubjectChange,
   onBodyChange,
+  hasQrCode = false,
 }: EmailPreviewProps) {
   const [subject, setSubject] = useState(initialSubject || DEFAULT_EMAIL_SUBJECT)
   const [body, setBody] = useState(initialBody || DEFAULT_EMAIL_BODY)
@@ -75,6 +77,27 @@ export function EmailPreview({
     onBodyChange?.(DEFAULT_EMAIL_BODY)
   }
 
+  // 渲染预览内容，处理二维码占位符
+  const renderPreviewContent = () => {
+    const parts = previewBody.split('[二维码图片]')
+    return parts.map((part, index) => (
+      <span key={index}>
+        {part}
+        {index < parts.length - 1 && (
+          hasQrCode ? (
+            <span className="inline-block my-2 text-center text-xs text-blue-500 border border-blue-300 bg-blue-50 rounded p-2 w-32 align-middle">
+              📷 二维码图片
+            </span>
+          ) : (
+            <span className="inline-block my-2 text-center text-xs text-slate-400 border border-dashed border-slate-300 rounded p-2 w-32 align-middle">
+              [二维码图片]
+            </span>
+          )
+        )}
+      </span>
+    ))
+  }
+
   return (
     <div className="grid grid-cols-2 gap-4">
       {/* 编辑区 */}
@@ -114,6 +137,7 @@ export function EmailPreview({
                 <code key={v} className="bg-slate-100 px-1 rounded">{v}</code>
               ))}
             </div>
+            <p className="mt-2">特殊占位符：<code className="bg-slate-100 px-1 rounded">[二维码图片]</code>（发送时自动替换为二维码）</p>
           </div>
         </CardContent>
       </Card>
@@ -130,16 +154,7 @@ export function EmailPreview({
               <p className="font-medium">{previewSubject}</p>
             </div>
             <div className="text-sm whitespace-pre-wrap leading-relaxed">
-              {previewBody.split('[二维码图片]').map((part, index, arr) => (
-                <span key={index}>
-                  {part}
-                  {index < arr.length - 1 && (
-                    <span className="inline-block my-2 text-center text-xs text-slate-400 border border-dashed border-slate-300 rounded p-2 w-32 align-middle">
-                      [二维码图片]
-                    </span>
-                  )}
-                </span>
-              ))}
+              {renderPreviewContent()}
             </div>
           </div>
         </CardContent>

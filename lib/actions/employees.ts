@@ -48,6 +48,7 @@ export async function createEmployeeAction(
 
 /**
  * 创建默认回访计划
+ * 每个员工只创建一条回访记录
  */
 export async function createDefaultFollowUpPlansAction(
   employeeId: string,
@@ -57,29 +58,22 @@ export async function createDefaultFollowUpPlansAction(
     const supabase = await createSupabaseServerClient()
     const leaveDateObj = new Date(leaveDate)
 
-    const followUpConfigs = [
-      { type: '1m' as const, months: 1 },
-      { type: '3m' as const, months: 3 },
-      { type: '6m' as const, months: 6 },
-    ]
+    // 默认离职后1个月回访
+    const planDate = new Date(leaveDateObj)
+    planDate.setMonth(planDate.getMonth() + 1)
 
-    for (const config of followUpConfigs) {
-      const planDate = new Date(leaveDateObj)
-      planDate.setMonth(planDate.getMonth() + config.months)
+    const insertData: FollowUpPlanInsert = {
+      employee_id: employeeId,
+      plan_date: planDate.toISOString().split('T')[0],
+      follow_up_type: '1m',
+      status: 'pending',
+      reminder_sent: false,
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await supabase.from('follow_up_plans').insert(insertData as any)
 
-      const insertData: FollowUpPlanInsert = {
-        employee_id: employeeId,
-        plan_date: planDate.toISOString().split('T')[0],
-        follow_up_type: config.type,
-        status: 'pending',
-        reminder_sent: false,
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await supabase.from('follow_up_plans').insert(insertData as any)
-
-      if (error) {
-        return { success: false, error: error.message }
-      }
+    if (error) {
+      return { success: false, error: error.message }
     }
 
     revalidatePath('/follow-ups')

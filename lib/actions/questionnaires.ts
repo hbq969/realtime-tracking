@@ -109,10 +109,17 @@ export async function sendQuestionnaireEmail(
   if (questionnaire?.external_url) {
     try {
       qrCodeBuffer = await generateQRCodeBuffer(questionnaire.external_url)
+      console.log('二维码生成成功, 大小:', qrCodeBuffer.length, 'bytes')
     } catch (error) {
       console.error('生成二维码失败:', error)
     }
+  } else {
+    console.log('问卷没有外部链接，不生成二维码')
   }
+
+  // 使用传入的模板，如果没有则使用问卷保存的模板
+  const emailSubject = customEmailSubject || questionnaire?.email_subject || undefined
+  const emailBody = customEmailBody || questionnaire?.email_body || undefined
 
   for (const employeeId of employeeIds) {
     try {
@@ -142,8 +149,8 @@ export async function sendQuestionnaireEmail(
         surveyLink,
         expiresInDays,
         smtpPassword,
-        customSubject: customEmailSubject,
-        customBody: customEmailBody,
+        customSubject: emailSubject,
+        customBody: emailBody,
         qrCodeBuffer: qrCodeBuffer || undefined,
       })
 

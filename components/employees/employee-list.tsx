@@ -108,6 +108,7 @@ export function EmployeeList({ employees, onSendSurvey }: EmployeeListProps) {
             </TableHead>
             <TableHead>姓名</TableHead>
             <TableHead>部门</TableHead>
+            <TableHead>班组</TableHead>
             <TableHead>职位</TableHead>
             <TableHead>离职日期</TableHead>
             <TableHead>离职原因</TableHead>
@@ -126,6 +127,7 @@ export function EmployeeList({ employees, onSendSurvey }: EmployeeListProps) {
               </TableCell>
               <TableCell className="font-medium">{employee.name}</TableCell>
               <TableCell>{employee.department || '-'}</TableCell>
+              <TableCell>{employee.team || '-'}</TableCell>
               <TableCell>{employee.position || '-'}</TableCell>
               <TableCell>{employee.leave_date || '-'}</TableCell>
               <TableCell>{employee.leave_reason || '-'}</TableCell>

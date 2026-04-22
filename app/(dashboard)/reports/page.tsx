@@ -40,7 +40,7 @@ export default async function ReportsPage() {
         <Link href="/reports/generate">
           <Button>
             <Plus className="h-4 w-4 mr-2" />
-            生成报告
+            创建报告
           </Button>
         </Link>
       </div>
@@ -106,7 +106,7 @@ export default async function ReportsPage() {
         <CardContent>
           {reports.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              暂无报告，点击右上角"生成报告"按钮创建新报告
+              暂无报告，点击右上角"创建报告"按钮创建新报告
             </div>
           ) : (
             <Table>

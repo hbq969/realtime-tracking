@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Upload, FileSpreadsheet } from 'lucide-react'
+import { Upload, FileSpreadsheet, Download } from 'lucide-react'
 
 interface EmployeeImportProps {
   onImport: (data: Record<string, string>[]) => Promise<void>
@@ -58,12 +58,33 @@ export function EmployeeImport({ onImport }: EmployeeImportProps) {
     }
   }
 
+  const handleDownloadTemplate = () => {
+    const headers = ['姓名', '手机号', '邮箱', '部门', '班组', '职位', '离职日期', '离职原因', '在职时长']
+    const exampleRow = ['张三', '13800138000', 'zhangsan@example.com', '技术部', '开发一组', '工程师', '2024-01-15', '个人发展', '24']
+    const csvContent = [headers.join(','), exampleRow.join(',')].join('\n')
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '员工导入模板.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>批量导入员工</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
+            <Download className="h-4 w-4 mr-2" />
+            下载导入模板
+          </Button>
+        </div>
+
         <div
           className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
           onClick={() => inputRef.current?.click()}
@@ -85,7 +106,7 @@ export function EmployeeImport({ onImport }: EmployeeImportProps) {
               <Upload className="h-8 w-8 mx-auto mb-2 text-slate-400" />
               <p className="text-slate-600">点击或拖拽上传 CSV 文件</p>
               <p className="text-sm text-slate-400 mt-1">
-                格式: 姓名,手机号,邮箱,部门,职位,离职日期,离职原因,在职时长
+                格式: 姓名, 手机号, 邮箱, 部门, 班组, 职位, 离职日期, 离职原因, 在职时长
               </p>
             </>
           )}

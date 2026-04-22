@@ -20,7 +20,7 @@ export async function GET(
 
     const qrBuffer = await generateQRCodeBuffer(questionnaire.external_url)
 
-    return new NextResponse(qrBuffer, {
+    return new NextResponse(new Uint8Array(qrBuffer), {
       headers: {
         'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=86400',

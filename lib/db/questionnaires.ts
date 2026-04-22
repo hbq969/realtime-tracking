@@ -115,7 +115,7 @@ export async function createQuestionnaire(
     .insert({
       title: questionnaireData.title,
       description: questionnaireData.description || null,
-      questions: questionnaireData.questions || null,
+      questions: questionnaireData.questions || [],
       status: questionnaireData.status || 'draft',
       external_url: questionnaireData.external_url || null,
       external_type: questionnaireData.external_type || null,
@@ -295,11 +295,11 @@ export async function getSurveyResponseRate(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabaseAny = supabase as any
 
+  // 获取发送的令牌数量
   let tokensQuery = supabaseAny.from('survey_tokens').select('*')
   if (questionnaireId) {
     tokensQuery = tokensQuery.eq('questionnaire_id', questionnaireId)
   }
-
   const { data: tokens, error: tokensError } = await tokensQuery
 
   if (tokensError) {
@@ -309,7 +309,19 @@ export async function getSurveyResponseRate(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const totalSent = (tokens as any[])?.length || 0
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const totalResponded = (tokens as any[])?.filter((t: any) => t.used).length || 0
+  const tokenResponded = (tokens as any[])?.filter((t: any) => t.used).length || 0
+
+  // 获取手动导入的回答数量
+  let responsesQuery = supabaseAny
+    .from('survey_responses')
+    .select('id', { count: 'exact', head: true })
+    .eq('submit_channel', 'manual')
+  if (questionnaireId) {
+    responsesQuery = responsesQuery.eq('questionnaire_id', questionnaireId)
+  }
+  const { count: manualResponded } = await responsesQuery
+
+  const totalResponded = tokenResponded + (manualResponded || 0)
   const responseRate = totalSent > 0 ? (totalResponded / totalSent) * 100 : 0
 
   return {

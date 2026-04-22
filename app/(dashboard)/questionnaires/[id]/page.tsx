@@ -22,6 +22,7 @@ export default async function QuestionnaireDetailPage({ params, searchParams }: 
 
   const { data: employees } = await getEmployees()
   const responseRate = await getSurveyResponseRate(id)
+  const companyName = process.env.NEXT_PUBLIC_COMPANY_NAME || '公司'
 
   return (
     <div className="space-y-6">
@@ -38,6 +39,7 @@ export default async function QuestionnaireDetailPage({ params, searchParams }: 
         employees={employees}
         responseRate={responseRate}
         defaultTab={tab || 'send'}
+        companyName={companyName}
       />
     </div>
   )

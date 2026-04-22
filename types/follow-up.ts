@@ -14,7 +14,9 @@ export interface FollowUpPlan {
     name: string
     phone: string
     department: string
+    team?: string
   }
+  followUpRecordCreatedAt?: string | null
 }
 
 export interface FollowUpRecord {

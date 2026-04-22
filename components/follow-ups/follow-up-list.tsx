@@ -11,6 +11,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { FileText } from 'lucide-react'
 
 interface FollowUpListProps {
   plans: FollowUpPlan[]
@@ -23,8 +25,8 @@ export function FollowUpList({ plans }: FollowUpListProps) {
         <TableRow>
           <TableHead>员工姓名</TableHead>
           <TableHead>部门</TableHead>
-          <TableHead>计划日期</TableHead>
-          <TableHead>回访类型</TableHead>
+          <TableHead>班组</TableHead>
+          <TableHead>回访时间</TableHead>
           <TableHead>状态</TableHead>
           <TableHead className="text-right">操作</TableHead>
         </TableRow>
@@ -36,12 +38,11 @@ export function FollowUpList({ plans }: FollowUpListProps) {
               {plan.employee?.name}
             </TableCell>
             <TableCell>{plan.employee?.department}</TableCell>
-            <TableCell>{plan.plan_date}</TableCell>
+            <TableCell>{plan.employee?.team || '-'}</TableCell>
             <TableCell>
-              {plan.follow_up_type === '1m' && '1个月'}
-              {plan.follow_up_type === '3m' && '3个月'}
-              {plan.follow_up_type === '6m' && '6个月'}
-              {plan.follow_up_type === 'custom' && '自定义'}
+              {plan.followUpRecordCreatedAt
+                ? new Date(plan.followUpRecordCreatedAt).toLocaleString('zh-CN')
+                : '-'}
             </TableCell>
             <TableCell>
               <Badge
@@ -61,12 +62,21 @@ export function FollowUpList({ plans }: FollowUpListProps) {
               </Badge>
             </TableCell>
             <TableCell className="text-right">
-              <Link
-                href={`/follow-ups/${plan.id}`}
-                className="text-primary hover:underline text-sm"
-              >
-                查看详情
-              </Link>
+              {plan.status === 'completed' ? (
+                <Link href={`/follow-ups/${plan.id}`}>
+                  <Button variant="outline" size="sm">
+                    <FileText className="h-4 w-4 mr-1" />
+                    查看回访记录
+                  </Button>
+                </Link>
+              ) : (
+                <Link href={`/follow-ups/${plan.id}`}>
+                  <Button variant="default" size="sm">
+                    <FileText className="h-4 w-4 mr-1" />
+                    登记回访记录
+                  </Button>
+                </Link>
+              )}
             </TableCell>
           </TableRow>
         ))}

@@ -17,6 +17,7 @@ export default function ImportEmployeesPage() {
       phone: row['手机号'] || row['phone'],
       email: row['邮箱'] || row['email'],
       department: row['部门'] || row['department'],
+      team: row['班组'] || row['team'],
       position: row['职位'] || row['position'],
       leave_date: row['离职日期'] || row['leave_date'],
       leave_reason: row['离职原因'] || row['leave_reason'],

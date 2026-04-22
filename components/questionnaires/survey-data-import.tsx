@@ -4,9 +4,10 @@ import { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Upload, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
-import { parseCSVText, parseImportData, type ParsedRow } from '@/lib/import/survey-data'
+import { Upload, CheckCircle, XCircle, AlertTriangle, ExternalLink } from 'lucide-react'
+import { parseCSVText, type ParsedRow } from '@/lib/import/survey-data'
 import { toast } from 'sonner'
+import JSZip from 'jszip'
 
 interface SurveyDataImportProps {
   questionnaireId: string
@@ -18,18 +19,47 @@ export function SurveyDataImport({ questionnaireId, onSuccess }: SurveyDataImpor
   const [parsing, setParsing] = useState(false)
   const [parsedData, setParsedData] = useState<ParsedRow[]>([])
   const [importing, setImporting] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
 
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
-    if (!selectedFile) return
+  const extractCsvFromZip = async (zipFile: File): Promise<string | null> => {
+    try {
+      const zip = await JSZip.loadAsync(zipFile)
+      const csvFile = Object.keys(zip.files).find(name => name.endsWith('.csv'))
+
+      if (!csvFile) {
+        toast.error('ZIP 文件中未找到 CSV 文件')
+        return null
+      }
+
+      const content = await zip.file(csvFile)?.async('string')
+      return content || null
+    } catch (error) {
+      console.error('解压 ZIP 文件失败:', error)
+      toast.error('解压 ZIP 文件失败')
+      return null
+    }
+  }
+
+  const processFile = useCallback(async (selectedFile: File) => {
 
     setFile(selectedFile)
     setParsing(true)
     setParsedData([])
 
     try {
-      // 读取文件
-      const text = await selectedFile.text()
+      let text: string
+
+      // 支持 ZIP 文件
+      if (selectedFile.name.endsWith('.zip')) {
+        const csvContent = await extractCsvFromZip(selectedFile)
+        if (!csvContent) {
+          setParsing(false)
+          return
+        }
+        text = csvContent
+      } else {
+        text = await selectedFile.text()
+      }
 
       // 解析 CSV
       const rows = parseCSVText(text)
@@ -63,6 +93,37 @@ export function SurveyDataImport({ questionnaireId, onSuccess }: SurveyDataImpor
       setParsing(false)
     }
   }, [questionnaireId])
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+    if (!selectedFile) return
+    await processFile(selectedFile)
+  }, [processFile])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+
+    const droppedFile = e.dataTransfer.files?.[0]
+    if (!droppedFile) return
+
+    if (!droppedFile.name.endsWith('.csv') && !droppedFile.name.endsWith('.zip')) {
+      toast.error('请上传 CSV 或 ZIP 格式文件')
+      return
+    }
+
+    await processFile(droppedFile)
+  }, [processFile])
 
   const handleImport = async () => {
     const matchedData = parsedData.filter(r => r.matchStatus === 'matched')
@@ -102,16 +163,36 @@ export function SurveyDataImport({ questionnaireId, onSuccess }: SurveyDataImpor
       {/* 上传区域 */}
       <Card>
         <CardHeader>
-          <CardTitle>上传问卷数据</CardTitle>
-          <CardDescription>
-            请上传从腾讯问卷导出的 CSV 文件
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>上传问卷数据</CardTitle>
+              <CardDescription>
+                请上传从腾讯问卷导出的 CSV 或 ZIP 文件
+              </CardDescription>
+            </div>
+            <a
+              href="https://wj.qq.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-primary hover:underline flex items-center gap-1"
+            >
+              腾讯问卷
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="border-2 border-dashed rounded-lg p-8 text-center">
+          <div
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              isDragging ? 'border-primary bg-primary/5' : ''
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             <input
               type="file"
-              accept=".csv"
+              accept=".csv,.zip"
               onChange={handleFileChange}
               className="hidden"
               id="file-upload"
@@ -122,7 +203,7 @@ export function SurveyDataImport({ questionnaireId, onSuccess }: SurveyDataImpor
               <p className="text-slate-600 mb-2">
                 {parsing ? '解析中...' : file ? file.name : '点击上传或拖拽文件到此处'}
               </p>
-              <p className="text-xs text-slate-400">支持 CSV 格式</p>
+              <p className="text-xs text-slate-400">支持 CSV、ZIP 格式</p>
             </label>
           </div>
         </CardContent>
@@ -160,7 +241,6 @@ export function SurveyDataImport({ questionnaireId, onSuccess }: SurveyDataImpor
                 <thead className="bg-slate-100 sticky top-0">
                   <tr>
                     <th className="text-left p-2">姓名</th>
-                    <th className="text-left p-2">手机号</th>
                     <th className="text-left p-2">状态</th>
                     <th className="text-left p-2">备注</th>
                   </tr>
@@ -169,7 +249,6 @@ export function SurveyDataImport({ questionnaireId, onSuccess }: SurveyDataImpor
                   {parsedData.map((row, index) => (
                     <tr key={index} className="border-b">
                       <td className="p-2">{row.employeeName}</td>
-                      <td className="p-2">{row.employeePhone}</td>
                       <td className="p-2">
                         {row.matchStatus === 'matched' && (
                           <Badge variant="default" className="text-xs">匹配成功</Badge>

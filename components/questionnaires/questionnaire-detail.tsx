@@ -9,13 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -26,9 +19,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { updateQuestionnaire, generateSurveyToken, sendQuestionnaireEmail } from '@/lib/actions/questionnaires'
+import { updateQuestionnaire, sendQuestionnaireEmail } from '@/lib/actions/questionnaires'
 import { SurveyDataImport } from './survey-data-import'
-import { Edit, Users, Send, Link2, Copy, Check, X, Mail, Key, QrCode, ExternalLink, Upload } from 'lucide-react'
+import { Edit, Users, Send, X, Mail, Key, Copy, ExternalLink, Upload } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -68,48 +61,26 @@ export function QuestionnaireDetail({
   const [responseRate, setResponseRate] = useState(initialResponseRate)
   const [isEditing, setIsEditing] = useState(false)
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([])
-  const [expiresInDays, setExpiresInDays] = useState('30')
-  const [generatedLink, setGeneratedLink] = useState('')
-  const [copied, setCopied] = useState(false)
   const [sending, setSending] = useState(false)
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
   const [smtpPassword, setSmtpPassword] = useState('')
   const [emailDialogOpen, setEmailDialogOpen] = useState(false)
-  const [emailSubject, setEmailSubject] = useState('')
-  const [emailBody, setEmailBody] = useState('')
+  const [emailSubject, setEmailSubject] = useState(questionnaire.email_subject || '')
+  const [emailBody, setEmailBody] = useState(questionnaire.email_body || '')
 
   const handleUpdate = async (data: {
     title: string
     description?: string
-    questions: Question[]
+    external_url?: string
+    external_type?: 'tencent' | null
     status: 'draft' | 'active' | 'archived'
+    email_subject?: string
+    email_body?: string
   }) => {
     const updated = await updateQuestionnaire(questionnaire.id, data)
     setQuestionnaire(updated)
     setIsEditing(false)
     router.refresh()
-  }
-
-  const handleGenerateLink = async () => {
-    if (selectedEmployeeIds.length === 0) {
-      toast.error('请选择至少一名员工')
-      return
-    }
-
-    try {
-      // 为第一个选中的员工生成链接（用于预览）
-      const token = await generateSurveyToken(
-        selectedEmployeeIds[0],
-        questionnaire.id,
-        parseInt(expiresInDays)
-      )
-      const link = `${window.location.origin}/survey/${token}`
-      setGeneratedLink(link)
-      toast.success('链接生成成功')
-    } catch (error) {
-      console.error('生成链接失败:', error)
-      toast.error('生成链接失败')
-    }
   }
 
   const handleSendEmail = () => {
@@ -139,7 +110,7 @@ export function QuestionnaireDetail({
         selectedEmployeeIds,
         questionnaire.id,
         questionnaire.title,
-        parseInt(expiresInDays),
+        30,
         smtpPassword,
         emailSubject,
         emailBody
@@ -169,12 +140,6 @@ export function QuestionnaireDetail({
     }
   }
 
-  const copyToClipboard = async () => {
-    await navigator.clipboard.writeText(generatedLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
   const toggleEmployee = (employeeId: string) => {
     setSelectedEmployeeIds(prev =>
       prev.includes(employeeId)
@@ -198,6 +163,11 @@ export function QuestionnaireDetail({
   const getEmployeeName = (employeeId: string) => {
     const emp = employees.find(e => e.id === employeeId)
     return emp ? `${emp.name} (${emp.department || '未知部门'})` : employeeId
+  }
+
+  const getEmployeeNameOnly = (employeeId: string) => {
+    const emp = employees.find(e => e.id === employeeId)
+    return emp?.name || '员工'
   }
 
   if (isEditing) {
@@ -266,7 +236,11 @@ export function QuestionnaireDetail({
       </div>
 
       {/* 标签页 */}
-      <Tabs defaultValue={defaultTab}>
+      <Tabs defaultValue={defaultTab} onValueChange={(value) => {
+        if (value === 'stats') {
+          router.refresh()
+        }
+      }}>
         <TabsList>
           <TabsTrigger value="send">
             <Send className="h-4 w-4 mr-2" />
@@ -369,79 +343,34 @@ export function QuestionnaireDetail({
                 </p>
               </div>
 
-              {/* 有效期 */}
-              <div className="space-y-2">
-                <Label>有效期（天）</Label>
-                <Select value={expiresInDays} onValueChange={(value) => setExpiresInDays(value || '30')}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="7">7 天</SelectItem>
-                    <SelectItem value="14">14 天</SelectItem>
-                    <SelectItem value="30">30 天</SelectItem>
-                    <SelectItem value="60">60 天</SelectItem>
-                    <SelectItem value="90">90 天</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* 操作按钮 */}
               <div className="flex gap-2">
                 <Button onClick={handleSendEmail} disabled={sending || selectedEmployeeIds.length === 0} className="flex-1">
                   <Mail className="h-4 w-4 mr-2" />
                   {sending ? '发送中...' : `发送邮件 (${selectedEmployeeIds.length}人)`}
                 </Button>
-                <Button onClick={handleGenerateLink} variant="outline" disabled={selectedEmployeeIds.length === 0}>
-                  <Link2 className="h-4 w-4 mr-2" />
-                  生成链接
-                </Button>
               </div>
-
-              {/* 生成的链接 */}
-              {generatedLink && (
-                <div className="space-y-2">
-                  <Label>问卷链接</Label>
-                  <div className="flex gap-2">
-                    <Input value={generatedLink} readOnly className="flex-1" />
-                    <Button onClick={copyToClipboard} variant="outline">
-                      {copied ? (
-                        <Check className="h-4 w-4" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    请将此链接发送给员工，链接将在指定天数后过期
-                  </p>
-                </div>
-              )}
-
-              {/* 二维码展示 */}
-              {questionnaire.external_url && (
-                <div className="flex justify-center py-4 border-t">
-                  <div className="text-center">
-                    <img
-                      src={`/api/questionnaires/${questionnaire.id}/qrcode`}
-                      alt="问卷二维码"
-                      className="w-40 h-40 mx-auto border rounded-lg shadow-sm"
-                    />
-                    <p className="text-sm text-slate-600 mt-2 font-medium">扫码填写问卷</p>
-                    <p className="text-xs text-slate-400">微信扫一扫可直接打开问卷</p>
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
           )}
         </TabsContent>
 
         <TabsContent value="import" className="mt-4">
-          <SurveyDataImport questionnaireId={questionnaire.id} />
+          <SurveyDataImport
+            questionnaireId={questionnaire.id}
+            onSuccess={() => router.refresh()}
+          />
         </TabsContent>
 
         <TabsContent value="stats" className="mt-4">
+          <div className="flex justify-end mb-4">
+            <Button variant="outline" size="sm" onClick={() => {
+              router.refresh()
+              toast.success('统计数据已刷新')
+            }}>
+              刷新统计数据
+            </Button>
+          </div>
           <div className="grid grid-cols-3 gap-4">
             <Card>
               <CardHeader className="pb-2">
@@ -469,7 +398,7 @@ export function QuestionnaireDetail({
 
       {/* 邮件预览对话框 */}
       <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="!max-w-[80vw] !w-[80vw] max-h-[80vh] h-[80vh] overflow-y-auto scrollbar-thin">
           <DialogHeader>
             <DialogTitle>发送问卷邮件</DialogTitle>
             <DialogDescription>
@@ -480,26 +409,14 @@ export function QuestionnaireDetail({
             <EmailPreview
               questionnaireTitle={questionnaire.title}
               questionnaireUrl={questionnaire.external_url || ''}
-              employeeName={selectedEmployeeIds.length === 1 ? getEmployeeName(selectedEmployeeIds[0]) : '员工'}
+              employeeName={selectedEmployeeIds.length === 1 ? getEmployeeNameOnly(selectedEmployeeIds[0]) : '员工'}
               companyName={companyName}
               initialSubject={questionnaire.email_subject || undefined}
               initialBody={questionnaire.email_body || undefined}
               onSubjectChange={setEmailSubject}
               onBodyChange={setEmailBody}
+              hasQrCode={!!questionnaire.external_url}
             />
-            {/* 二维码预览 */}
-            {questionnaire.external_url && (
-              <div className="flex justify-center">
-                <div className="text-center">
-                  <img
-                    src={`/api/questionnaires/${questionnaire.id}/qrcode`}
-                    alt="问卷二维码"
-                    className="w-32 h-32 mx-auto border rounded"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">扫码填写问卷</p>
-                </div>
-              </div>
-            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>
                 取消

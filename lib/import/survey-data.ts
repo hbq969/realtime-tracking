@@ -1,7 +1,6 @@
 /**
  * 问卷数据导入解析工具
  */
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 // 导入行数据类型
 export interface ImportRow {
@@ -12,7 +11,6 @@ export interface ImportRow {
 export interface ParsedRow {
   employeeId: string | null
   employeeName: string
-  employeePhone: string
   submittedAt: string
   answers: Record<string, string>
   matchStatus: 'matched' | 'not_found' | 'multiple_match'
@@ -39,17 +37,14 @@ const SKIP_COLUMNS = [
  */
 export function parseTencentSurveyRow(row: ImportRow): {
   name: string | null
-  phone: string | null
   submittedAt: string
   answers: Record<string, string>
 } {
-  // 获取姓名
-  const nameColumn = Object.keys(row).find(key => key.includes('您的姓名'))
+  // 获取姓名（支持多种列名格式）
+  const nameColumn = Object.keys(row).find(key =>
+    key.includes('姓名') || key.includes('您的姓名')
+  )
   const name = nameColumn ? row[nameColumn]?.trim() : null
-
-  // 获取手机号（清洗制表符）
-  const phoneColumn = Object.keys(row).find(key => key.includes('您的手机号码'))
-  const phone = phoneColumn ? row[phoneColumn]?.trim().replace(/\t/g, '') : null
 
   // 获取提交时间
   const submittedAt = row['开始答题时间'] || new Date().toISOString()
@@ -59,7 +54,7 @@ export function parseTencentSurveyRow(row: ImportRow): {
   for (const [key, value] of Object.entries(row)) {
     // 跳过系统列和身份识别列
     if (SKIP_COLUMNS.some(skip => key.includes(skip))) continue
-    if (key.includes('您的姓名') || key.includes('您的手机号码')) continue
+    if (key.includes('姓名') || key.includes('您的手机号码')) continue
 
     // 提取题目标题（去掉编号前缀）
     const questionTitle = key.replace(/^\d+\./, '').trim()
@@ -70,73 +65,7 @@ export function parseTencentSurveyRow(row: ImportRow): {
     answers[questionTitle] = answerValue
   }
 
-  return { name, phone, submittedAt, answers }
-}
-
-/**
- * 匹配员工
- */
-export async function matchEmployee(
-  name: string | null,
-  phone: string | null
-): Promise<{ id: string; status: 'matched' | 'not_found' | 'multiple_match'; error?: string }> {
-  const supabase = await createSupabaseServerClient()
-
-  // 优先通过姓名匹配
-  if (name) {
-    const { data: byName, error } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('name', name)
-      .limit(2)
-
-    if (!error && byName && byName.length === 1) {
-      return { id: byName[0].id, status: 'matched' }
-    }
-    if (byName && byName.length > 1) {
-      return { id: '', status: 'multiple_match', error: '存在多个同名员工' }
-    }
-  }
-
-  // 通过手机号匹配
-  if (phone) {
-    const { data: byPhone, error } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('phone', phone)
-      .limit(1)
-
-    if (!error && byPhone && byPhone.length === 1) {
-      return { id: byPhone[0].id, status: 'matched' }
-    }
-  }
-
-  return { id: '', status: 'not_found', error: '未找到匹配员工' }
-}
-
-/**
- * 批量解析导入数据
- */
-export async function parseImportData(rows: ImportRow[]): Promise<ParsedRow[]> {
-  const results: ParsedRow[] = []
-
-  for (const row of rows) {
-    const { name, phone, submittedAt, answers } = parseTencentSurveyRow(row)
-
-    const matchResult = await matchEmployee(name, phone)
-
-    results.push({
-      employeeId: matchResult.status === 'matched' ? matchResult.id : null,
-      employeeName: name || '',
-      employeePhone: phone || '',
-      submittedAt,
-      answers,
-      matchStatus: matchResult.status,
-      matchError: matchResult.error,
-    })
-  }
-
-  return results
+  return { name, submittedAt, answers }
 }
 
 /**

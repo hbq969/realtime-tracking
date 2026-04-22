@@ -55,7 +55,11 @@ export async function getFollowUpPlans(
       employees (
         name,
         phone,
-        department
+        department,
+        team
+      ),
+      follow_up_records (
+        created_at
       )
     `,
       { count: 'exact' }
@@ -93,8 +97,10 @@ export async function getFollowUpPlans(
           name: item.employees.name,
           phone: item.employees.phone,
           department: item.employees.department,
+          team: item.employees.team,
         }
       : undefined,
+    followUpRecordCreatedAt: item.follow_up_records?.[0]?.created_at || null,
   })) as FollowUpPlan[]
 
   return {
@@ -352,35 +358,25 @@ export async function getFollowUpStats(): Promise<{
 
 /**
  * 为员工创建默认回访计划（服务端）
+ * 每个员工只创建一条回访记录
  */
 export async function createDefaultFollowUpPlans(
   employeeId: string,
   leaveDate: string
-): Promise<FollowUpPlan[]> {
-  const plans: FollowUpPlan[] = []
+): Promise<FollowUpPlan> {
   const leaveDateObj = new Date(leaveDate)
 
-  // 定义默认回访时间点
-  const followUpConfigs = [
-    { type: '1m' as const, months: 1 },
-    { type: '3m' as const, months: 3 },
-    { type: '6m' as const, months: 6 },
-  ]
+  // 默认离职后1个月回访
+  const planDate = new Date(leaveDateObj)
+  planDate.setMonth(planDate.getMonth() + 1)
 
-  for (const config of followUpConfigs) {
-    const planDate = new Date(leaveDateObj)
-    planDate.setMonth(planDate.getMonth() + config.months)
+  const plan = await createFollowUpPlan({
+    employee_id: employeeId,
+    plan_date: planDate.toISOString().split('T')[0],
+    follow_up_type: '1m',
+  })
 
-    const plan = await createFollowUpPlan({
-      employee_id: employeeId,
-      plan_date: planDate.toISOString().split('T')[0],
-      follow_up_type: config.type,
-    })
-
-    plans.push(plan)
-  }
-
-  return plans
+  return plan
 }
 
 /**
@@ -423,7 +419,8 @@ export async function getFollowUpPlansClient(
       employees (
         name,
         phone,
-        department
+        department,
+        team
       )
     `,
       { count: 'exact' }

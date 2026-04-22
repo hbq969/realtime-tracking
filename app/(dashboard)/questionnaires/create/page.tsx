@@ -9,7 +9,8 @@ export default function CreateQuestionnairePage() {
   async function handleCreate(data: {
     title: string
     description?: string
-    questions: any[]
+    external_url?: string
+    external_type?: 'tencent' | null
     status: 'draft' | 'active' | 'archived'
   }) {
     'use server'

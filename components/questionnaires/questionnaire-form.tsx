@@ -18,6 +18,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AlertTriangle, ExternalLink } from 'lucide-react'
 import type { Questionnaire } from '@/types/questionnaire'
+import { DEFAULT_EMAIL_SUBJECT, DEFAULT_EMAIL_BODY } from '@/types/questionnaire'
 
 const formSchema = z.object({
   title: z.string().min(1, '请输入问卷标题'),
@@ -27,6 +28,8 @@ const formSchema = z.object({
     .string()
     .min(1, '请输入问卷链接')
     .url('请输入有效的问卷链接'),
+  email_subject: z.string().optional(),
+  email_body: z.string().optional(),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -39,6 +42,8 @@ interface QuestionnaireFormProps {
     external_url: string
     external_type: 'tencent'
     status: 'draft' | 'active' | 'archived'
+    email_subject?: string
+    email_body?: string
   }) => Promise<void>
   isEdit?: boolean
 }
@@ -61,11 +66,12 @@ export function QuestionnaireForm({
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      title: '',
-      description: '',
-      status: 'draft',
-      external_url: '',
-      ...defaultValues,
+      title: defaultValues?.title || '',
+      description: defaultValues?.description || '',
+      status: defaultValues?.status || 'draft',
+      external_url: defaultValues?.external_url ?? '',
+      email_subject: defaultValues?.email_subject || DEFAULT_EMAIL_SUBJECT,
+      email_body: defaultValues?.email_body || DEFAULT_EMAIL_BODY,
     },
   })
 
@@ -79,6 +85,11 @@ export function QuestionnaireForm({
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleResetEmailTemplate = () => {
+    setValue('email_subject', DEFAULT_EMAIL_SUBJECT)
+    setValue('email_body', DEFAULT_EMAIL_BODY)
   }
 
   return (
@@ -106,10 +117,21 @@ export function QuestionnaireForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="external_url">
-          问卷链接
-          <span className="text-red-500 ml-1">*</span>
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="external_url">
+            问卷链接
+            <span className="text-red-500 ml-1">*</span>
+          </Label>
+          <a
+            href="https://wj.qq.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-primary hover:underline flex items-center gap-1"
+          >
+            腾讯问卷
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
         <Input
           id="external_url"
           placeholder="请输入腾讯问卷链接，如：https://wj.qq.com/s2/xxxxx"
@@ -134,15 +156,48 @@ export function QuestionnaireForm({
             <li>
               <strong>姓名</strong>（单行文本，必填）
             </li>
-            <li>
-              <strong>手机号</strong>（单行文本，必填）
-            </li>
           </ul>
           <p className="mt-2 text-sm">
-            这两个题目用于将问卷回答关联到对应的离职员工。
+            该题目用于将问卷回答关联到对应的离职员工。
           </p>
         </AlertDescription>
       </Alert>
+
+      {/* 邮件模板设置 */}
+      <div className="space-y-4 border-t pt-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-medium">邮件模板（可选）</h3>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleResetEmailTemplate}
+          >
+            重置为默认模板
+          </Button>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="email_subject">邮件主题</Label>
+          <Input
+            id="email_subject"
+            placeholder="请输入邮件主题"
+            {...register('email_subject')}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="email_body">邮件正文</Label>
+          <Textarea
+            id="email_body"
+            placeholder="请输入邮件正文"
+            rows={8}
+            className="font-mono text-sm"
+            {...register('email_body')}
+          />
+          <p className="text-xs text-muted-foreground">
+            可用变量：{'{员工姓名}'}、{'{问卷标题}'}、{'{问卷链接}'}、{'{公司名称}'}、{'{日期}'}、[二维码图片]
+          </p>
+        </div>
+      </div>
 
       {isEdit && (
         <div className="space-y-2">
