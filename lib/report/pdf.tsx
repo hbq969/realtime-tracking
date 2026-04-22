@@ -8,14 +8,31 @@ import {
   Text,
   View,
   StyleSheet,
+  Font,
 } from '@react-pdf/renderer'
 import type { ReportContent } from '@/types/report'
 
-// 样式定义 - 使用默认字体避免字体加载问题
+// 注册中文字体 - 使用 Source Han Sans (思源黑体)
+Font.register({
+  family: 'SourceHanSans',
+  fonts: [
+    {
+      src: 'https://cdn.jsdelivr.net/npm/source-han-sans-cn@1.0.0/SourceHanSansCN-Regular.otf',
+      fontWeight: 400,
+    },
+    {
+      src: 'https://cdn.jsdelivr.net/npm/source-han-sans-cn@1.0.0/SourceHanSansCN-Bold.otf',
+      fontWeight: 700,
+    },
+  ],
+})
+
+// 样式定义
 const styles = StyleSheet.create({
   page: {
     flexDirection: 'column',
     padding: 40,
+    fontFamily: 'SourceHanSans',
   },
   title: {
     fontSize: 24,
