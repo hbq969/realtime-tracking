@@ -8,22 +8,14 @@ import {
   Text,
   View,
   StyleSheet,
-  Font,
 } from '@react-pdf/renderer'
 import type { ReportContent } from '@/types/report'
 
-// 注册中文字体（使用系统默认字体）
-Font.register({
-  family: 'Noto Sans SC',
-  src: 'https://fonts.gstatic.com/s/notosanssc/v35/k3kXo84MPvpLmixcA63oeALZTYKLgASIOQ.woff2',
-})
-
-// 样式定义
+// 样式定义 - 使用默认字体避免字体加载问题
 const styles = StyleSheet.create({
   page: {
     flexDirection: 'column',
     padding: 40,
-    fontFamily: 'Noto Sans SC',
   },
   title: {
     fontSize: 24,
