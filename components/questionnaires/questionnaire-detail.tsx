@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, use } from 'react'
+import { useState } from 'react'
 import type { Questionnaire, Question } from '@/types/questionnaire'
 import type { Employee } from '@/types/database'
 import { QuestionnaireForm } from './questionnaire-form'
+import { EmailPreview } from './email-preview'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -26,8 +27,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { updateQuestionnaire, generateSurveyToken, sendQuestionnaireEmail } from '@/lib/actions/questionnaires'
-import { Edit, Users, BarChart3, Link2, Send, Copy, Check, X, Mail, Key } from 'lucide-react'
-import Link from 'next/link'
+import { Edit, Users, Send, Link2, Copy, Check, X, Mail, Key, QrCode, ExternalLink } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -40,6 +40,7 @@ interface QuestionnaireDetailProps {
     responseRate: number
   }
   defaultTab?: string
+  companyName?: string
 }
 
 const statusLabels = {
@@ -58,7 +59,8 @@ export function QuestionnaireDetail({
   questionnaire: initialQuestionnaire,
   employees,
   responseRate: initialResponseRate,
-  defaultTab = 'questions',
+  defaultTab = 'send',
+  companyName = '公司',
 }: QuestionnaireDetailProps) {
   const router = useRouter()
   const [questionnaire, setQuestionnaire] = useState(initialQuestionnaire)
@@ -68,10 +70,12 @@ export function QuestionnaireDetail({
   const [expiresInDays, setExpiresInDays] = useState('30')
   const [generatedLink, setGeneratedLink] = useState('')
   const [copied, setCopied] = useState(false)
-  const [dialogOpen, setDialogOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
   const [smtpPassword, setSmtpPassword] = useState('')
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false)
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
 
   const handleUpdate = async (data: {
     title: string
@@ -112,7 +116,13 @@ export function QuestionnaireDetail({
       toast.error('请选择至少一名员工')
       return
     }
-    // 打开授权码输入对话框
+    // 打开邮件预览对话框
+    setEmailDialogOpen(true)
+  }
+
+  const handleConfirmFromPreview = () => {
+    // 从预览对话框确认后，打开授权码输入对话框
+    setEmailDialogOpen(false)
     setPasswordDialogOpen(true)
   }
 
@@ -129,7 +139,9 @@ export function QuestionnaireDetail({
         questionnaire.id,
         questionnaire.title,
         parseInt(expiresInDays),
-        smtpPassword
+        smtpPassword,
+        emailSubject,
+        emailBody
       )
 
       if (result.success > 0) {
@@ -137,6 +149,8 @@ export function QuestionnaireDetail({
         setSelectedEmployeeIds([])
         setPasswordDialogOpen(false)
         setSmtpPassword('')
+        setEmailSubject('')
+        setEmailBody('')
         router.refresh()
       }
 
@@ -207,10 +221,36 @@ export function QuestionnaireDetail({
     <div className="space-y-6">
       {/* 头部信息 */}
       <div className="flex items-start justify-between">
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-semibold">{questionnaire.title}</h2>
           {questionnaire.description && (
             <p className="text-slate-500 mt-1">{questionnaire.description}</p>
+          )}
+          {/* 外部问卷链接 */}
+          {questionnaire.external_url && (
+            <div className="mt-3 flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+              <ExternalLink className="h-4 w-4 text-slate-400" />
+              <span className="text-sm text-slate-600">问卷链接：</span>
+              <a
+                href={questionnaire.external_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 hover:underline truncate max-w-md"
+              >
+                {questionnaire.external_url}
+              </a>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(questionnaire.external_url || '')
+                  toast.success('链接已复制')
+                }}
+              >
+                <Copy className="h-3 w-3 mr-1" />
+                复制
+              </Button>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -227,10 +267,6 @@ export function QuestionnaireDetail({
       {/* 标签页 */}
       <Tabs defaultValue={defaultTab}>
         <TabsList>
-          <TabsTrigger value="questions">
-            <BarChart3 className="h-4 w-4 mr-2" />
-            问题列表
-          </TabsTrigger>
           <TabsTrigger value="send">
             <Send className="h-4 w-4 mr-2" />
             发送问卷
@@ -240,58 +276,6 @@ export function QuestionnaireDetail({
             统计数据
           </TabsTrigger>
         </TabsList>
-
-        <TabsContent value="questions" className="mt-4">
-          <div className="space-y-4">
-            {questionnaire.questions.map((question, index) => (
-              <Card key={question.id}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">问题 {index + 1}</Badge>
-                    {question.required && <Badge variant="secondary">必填</Badge>}
-                  </div>
-                  <CardTitle className="text-base mt-2">{question.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {question.type === 'single' && (
-                    <div className="space-y-2">
-                      {question.options?.map((option, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <div className="h-4 w-4 rounded-full border border-slate-300" />
-                          <span>{option}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {question.type === 'multiple' && (
-                    <div className="space-y-2">
-                      {question.options?.map((option, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <div className="h-4 w-4 rounded border border-slate-300" />
-                          <span>{option}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {question.type === 'text' && (
-                    <div className="h-20 border rounded-md p-2 text-slate-400">
-                      {question.placeholder || '请输入您的回答'}
-                    </div>
-                  )}
-                  {question.type === 'rating' && (
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <div key={star} className="h-6 w-6 text-slate-300">
-                          ★
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
 
         <TabsContent value="send" className="mt-4">
           {questionnaire.status !== 'active' ? (
@@ -428,6 +412,21 @@ export function QuestionnaireDetail({
                   </p>
                 </div>
               )}
+
+              {/* 二维码展示 */}
+              {questionnaire.external_url && (
+                <div className="flex justify-center py-4 border-t">
+                  <div className="text-center">
+                    <img
+                      src={`/api/questionnaires/${questionnaire.id}/qrcode`}
+                      alt="问卷二维码"
+                      className="w-40 h-40 mx-auto border rounded-lg shadow-sm"
+                    />
+                    <p className="text-sm text-slate-600 mt-2 font-medium">扫码填写问卷</p>
+                    <p className="text-xs text-slate-400">微信扫一扫可直接打开问卷</p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
           )}
@@ -458,6 +457,51 @@ export function QuestionnaireDetail({
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* 邮件预览对话框 */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>发送问卷邮件</DialogTitle>
+            <DialogDescription>
+              预览并调整邮件内容后发送给选中的员工
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <EmailPreview
+              questionnaireTitle={questionnaire.title}
+              questionnaireUrl={questionnaire.external_url || ''}
+              employeeName={selectedEmployeeIds.length === 1 ? getEmployeeName(selectedEmployeeIds[0]) : '员工'}
+              companyName={companyName}
+              initialSubject={questionnaire.email_subject || undefined}
+              initialBody={questionnaire.email_body || undefined}
+              onSubjectChange={setEmailSubject}
+              onBodyChange={setEmailBody}
+            />
+            {/* 二维码预览 */}
+            {questionnaire.external_url && (
+              <div className="flex justify-center">
+                <div className="text-center">
+                  <img
+                    src={`/api/questionnaires/${questionnaire.id}/qrcode`}
+                    alt="问卷二维码"
+                    className="w-32 h-32 mx-auto border rounded"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">扫码填写问卷</p>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={handleConfirmFromPreview}>
+                下一步：输入授权码
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* 授权码输入对话框 */}
       <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
