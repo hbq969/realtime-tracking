@@ -1,18 +1,8 @@
 /**
- * 问卷数据服务
+ * 问卷数据服务 (SQLite/sql.js 实现)
  */
-import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'
-import type { Database } from '@/types/database'
-import type { Questionnaire, Question } from '@/types/questionnaire'
-
-type QuestionnaireRow = Database['public']['Tables']['questionnaires']['Row']
-type QuestionnaireInsert = Database['public']['Tables']['questionnaires']['Insert']
-type QuestionnaireUpdate = Database['public']['Tables']['questionnaires']['Update']
-type SurveyTokenRow = Database['public']['Tables']['survey_tokens']['Row']
-type SurveyTokenInsert = Database['public']['Tables']['survey_tokens']['Insert']
-type SurveyResponseRow = Database['public']['Tables']['survey_responses']['Row']
-type SurveyResponseInsert = Database['public']['Tables']['survey_responses']['Insert']
+import { getDb, saveDatabase, generateId } from './index'
+import type { Questionnaire, Question, ExternalType } from '@/types/questionnaire'
 
 // 分页参数
 interface PaginationParams {
@@ -36,41 +26,66 @@ interface QuestionnaireFilters {
 }
 
 /**
+ * 将数据库行转换为 Questionnaire 对象
+ */
+function rowToQuestionnaire(row: unknown[]): Questionnaire {
+  return {
+    id: row[0] as string,
+    title: row[1] as string,
+    description: row[2] as string,
+    questions: row[3] ? JSON.parse(row[3] as string) : null,
+    status: row[4] as 'draft' | 'active' | 'archived',
+    created_at: row[5] as string,
+    external_url: row[6] as string | null,
+    external_type: row[7] as ExternalType,
+    email_subject: row[8] as string | null,
+    email_body: row[9] as string | null,
+  }
+}
+
+/**
  * 获取问卷列表（服务端）
  */
 export async function getQuestionnaires(
   filters: QuestionnaireFilters = {},
   pagination: PaginationParams = {}
 ): Promise<PaginatedResult<Questionnaire>> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
   const { page = 1, pageSize = 10 } = pagination
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
+  const offset = (page - 1) * pageSize
 
-  let query = supabase
-    .from('questionnaires')
-    .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false })
+  // 构建 WHERE 子句
+  const conditions: string[] = []
+  const params: unknown[] = []
 
   if (filters.status) {
-    query = query.eq('status', filters.status)
+    conditions.push('status = ?')
+    params.push(filters.status)
   }
   if (filters.search) {
-    query = query.ilike('title', `%${filters.search}%`)
+    conditions.push('title LIKE ?')
+    params.push(`%${filters.search}%`)
   }
 
-  const { data, error, count } = await query.range(from, to)
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-  if (error) {
-    throw new Error(`获取问卷列表失败: ${error.message}`)
-  }
+  // 查询总数
+  const countSql = `SELECT COUNT(*) as count FROM questionnaires ${whereClause}`
+  const countResults = db.exec(countSql, params)
+  const total = countResults[0]?.values[0]?.[0] as number || 0
+
+  // 查询数据
+  const dataSql = `SELECT * FROM questionnaires ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  const dataResults = db.exec(dataSql, [...params, pageSize, offset])
+  const rows = dataResults[0]?.values || []
+  const data = rows.map(rowToQuestionnaire)
 
   return {
-    data: (data || []) as Questionnaire[],
-    total: count || 0,
+    data,
+    total,
     page,
     pageSize,
-    totalPages: Math.ceil((count || 0) / pageSize),
+    totalPages: Math.ceil(total / pageSize),
   }
 }
 
@@ -78,19 +93,16 @@ export async function getQuestionnaires(
  * 根据ID获取问卷（服务端）
  */
 export async function getQuestionnaireById(id: string): Promise<Questionnaire | null> {
-  const supabase = await createSupabaseServerClient()
-  const { data, error } = await supabase
-    .from('questionnaires')
-    .select('*')
-    .eq('id', id)
-    .single()
+  const db = getDb()
 
-  if (error) {
-    if (error.code === 'PGRST116') return null
-    throw new Error(`获取问卷信息失败: ${error.message}`)
+  const results = db.exec('SELECT * FROM questionnaires WHERE id = ?', [id])
+  const rows = results[0]?.values || []
+
+  if (rows.length === 0) {
+    return null
   }
 
-  return data as Questionnaire
+  return rowToQuestionnaire(rows[0])
 }
 
 /**
@@ -108,28 +120,31 @@ export async function createQuestionnaire(
     email_body?: string
   }
 ): Promise<Questionnaire> {
-  const supabase = await createSupabaseServerClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
-    .from('questionnaires')
-    .insert({
-      title: questionnaireData.title,
-      description: questionnaireData.description || null,
-      questions: questionnaireData.questions || [],
-      status: questionnaireData.status || 'draft',
-      external_url: questionnaireData.external_url || null,
-      external_type: questionnaireData.external_type || null,
-      email_subject: questionnaireData.email_subject || null,
-      email_body: questionnaireData.email_body || null,
-    })
-    .select()
-    .single()
+  const db = getDb()
+  const id = generateId()
+  const now = new Date().toISOString()
 
-  if (error) {
-    throw new Error(`创建问卷失败: ${error.message}`)
-  }
+  db.run(
+    `INSERT INTO questionnaires (
+      id, title, description, questions, status, created_at, external_url, external_type, email_subject, email_body
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      questionnaireData.title,
+      questionnaireData.description || null,
+      questionnaireData.questions ? JSON.stringify(questionnaireData.questions) : null,
+      questionnaireData.status || 'draft',
+      now,
+      questionnaireData.external_url || null,
+      questionnaireData.external_type || null,
+      questionnaireData.email_subject || null,
+      questionnaireData.email_body || null,
+    ]
+  )
 
-  return data as Questionnaire
+  saveDatabase()
+
+  return getQuestionnaireById(id) as Promise<Questionnaire>
 }
 
 /**
@@ -148,21 +163,74 @@ export async function updateQuestionnaire(
     email_body: string
   }>
 ): Promise<Questionnaire> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
-    .from('questionnaires')
-    .update(questionnaireData)
-    .eq('id', id)
-    .select()
-    .single()
+  // 构建更新字段
+  const updates: string[] = []
+  const params: unknown[] = []
 
-  if (error) {
-    throw new Error(`更新问卷失败: ${error.message}`)
+  if (questionnaireData.title !== undefined) {
+    updates.push('title = ?')
+    params.push(questionnaireData.title)
+  }
+  if (questionnaireData.description !== undefined) {
+    updates.push('description = ?')
+    params.push(questionnaireData.description || null)
+  }
+  if (questionnaireData.questions !== undefined) {
+    updates.push('questions = ?')
+    params.push(questionnaireData.questions ? JSON.stringify(questionnaireData.questions) : null)
+  }
+  if (questionnaireData.status !== undefined) {
+    updates.push('status = ?')
+    params.push(questionnaireData.status)
+  }
+  if (questionnaireData.external_url !== undefined) {
+    updates.push('external_url = ?')
+    params.push(questionnaireData.external_url || null)
+  }
+  if (questionnaireData.external_type !== undefined) {
+    updates.push('external_type = ?')
+    params.push(questionnaireData.external_type || null)
+  }
+  if (questionnaireData.email_subject !== undefined) {
+    updates.push('email_subject = ?')
+    params.push(questionnaireData.email_subject || null)
+  }
+  if (questionnaireData.email_body !== undefined) {
+    updates.push('email_body = ?')
+    params.push(questionnaireData.email_body || null)
   }
 
-  return data as Questionnaire
+  if (updates.length === 0) {
+    const questionnaire = await getQuestionnaireById(id)
+    if (!questionnaire) {
+      throw new Error('更新问卷失败: 问卷不存在')
+    }
+    return questionnaire
+  }
+
+  params.push(id)
+
+  db.run(`UPDATE questionnaires SET ${updates.join(', ')} WHERE id = ?`, params)
+  saveDatabase()
+
+  const questionnaire = await getQuestionnaireById(id)
+  if (!questionnaire) {
+    throw new Error('更新问卷失败: 问卷不存在')
+  }
+
+  return questionnaire
+}
+
+/**
+ * 删除问卷（服务端）
+ */
+export async function deleteQuestionnaire(id: string): Promise<void> {
+  const db = getDb()
+
+  db.run('DELETE FROM questionnaires WHERE id = ?', [id])
+  saveDatabase()
 }
 
 /**
@@ -173,25 +241,23 @@ export async function generateSurveyToken(
   questionnaireId: string,
   expiresInDays: number = 30
 ): Promise<string> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
 
   // 生成随机令牌
   const token = crypto.randomUUID().replace(/-/g, '').toUpperCase()
   const expiresAt = new Date()
   expiresAt.setDate(expiresAt.getDate() + expiresInDays)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any).from('survey_tokens').insert({
-    token,
-    employee_id: employeeId,
-    questionnaire_id: questionnaireId,
-    used: false,
-    expires_at: expiresAt.toISOString(),
-  })
+  const id = generateId()
+  const now = new Date().toISOString()
 
-  if (error) {
-    throw new Error(`生成问卷令牌失败: ${error.message}`)
-  }
+  db.run(
+    `INSERT INTO survey_tokens (id, token, employee_id, questionnaire_id, used, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, token, employeeId, questionnaireId, 0, expiresAt.toISOString(), now]
+  )
+
+  saveDatabase()
 
   return token
 }
@@ -202,31 +268,37 @@ export async function generateSurveyToken(
 export async function validateSurveyToken(
   token: string
 ): Promise<{ valid: boolean; employeeId?: string; questionnaireId?: string; error?: string }> {
-  const supabase = await createSupabaseServerClient()
+  const db = getDb()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
-    .from('survey_tokens')
-    .select('*')
-    .eq('token', token)
-    .single()
+  const results = db.exec(
+    'SELECT * FROM survey_tokens WHERE token = ?',
+    [token]
+  )
 
-  if (error || !data) {
+  const rows = results[0]?.values || []
+
+  if (rows.length === 0) {
     return { valid: false, error: '无效的问卷链接' }
   }
 
-  if (data.used) {
+  const row = rows[0]
+  const used = row[4] as number
+  const expiresAt = row[5] as string
+  const employeeId = row[2] as string
+  const questionnaireId = row[3] as string
+
+  if (used === 1) {
     return { valid: false, error: '该问卷链接已使用' }
   }
 
-  if (data.expires_at && new Date(data.expires_at) < new Date()) {
+  if (expiresAt && new Date(expiresAt) < new Date()) {
     return { valid: false, error: '该问卷链接已过期' }
   }
 
   return {
     valid: true,
-    employeeId: data.employee_id || undefined,
-    questionnaireId: data.questionnaire_id || undefined,
+    employeeId: employeeId || undefined,
+    questionnaireId: questionnaireId || undefined,
   }
 }
 
@@ -237,9 +309,7 @@ export async function submitSurveyResponse(
   token: string,
   answers: Record<string, string | string[]>
 ): Promise<void> {
-  const supabase = await createSupabaseServerClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabaseAny = supabase as any
+  const db = getDb()
 
   // 验证令牌
   const validation = await validateSurveyToken(token)
@@ -248,37 +318,34 @@ export async function submitSurveyResponse(
   }
 
   // 获取令牌信息
-  const { data: tokenData, error: tokenError } = await supabaseAny
-    .from('survey_tokens')
-    .select('*')
-    .eq('token', token)
-    .single()
+  const tokenResults = db.exec(
+    'SELECT * FROM survey_tokens WHERE token = ?',
+    [token]
+  )
+  const tokenRows = tokenResults[0]?.values || []
 
-  if (tokenError || !tokenData) {
+  if (tokenRows.length === 0) {
     throw new Error('获取令牌信息失败')
   }
 
-  // 插入回答
-  const { error: insertError } = await supabaseAny.from('survey_responses').insert({
-    employee_id: tokenData.employee_id,
-    questionnaire_id: tokenData.questionnaire_id,
-    answers: answers,
-    submit_channel: 'survey',
-  })
+  const tokenData = tokenRows[0]
+  const employeeId = tokenData[2] as string
+  const questionnaireId = tokenData[3] as string
 
-  if (insertError) {
-    throw new Error(`提交问卷回答失败: ${insertError.message}`)
-  }
+  // 插入回答
+  const id = generateId()
+  const now = new Date().toISOString()
+
+  db.run(
+    `INSERT INTO survey_responses (id, employee_id, questionnaire_id, answers, submit_channel, submitted_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, employeeId, questionnaireId, JSON.stringify(answers), 'survey', now]
+  )
 
   // 标记令牌已使用
-  const { error: updateError } = await supabaseAny
-    .from('survey_tokens')
-    .update({ used: true })
-    .eq('token', token)
+  db.run('UPDATE survey_tokens SET used = 1 WHERE token = ?', [token])
 
-  if (updateError) {
-    throw new Error(`更新令牌状态失败: ${updateError.message}`)
-  }
+  saveDatabase()
 }
 
 /**
@@ -291,37 +358,36 @@ export async function getSurveyResponseRate(
   totalResponded: number
   responseRate: number
 }> {
-  const supabase = await createSupabaseServerClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabaseAny = supabase as any
+  const db = getDb()
 
   // 获取发送的令牌数量
-  let tokensQuery = supabaseAny.from('survey_tokens').select('*')
+  let tokensSql = 'SELECT * FROM survey_tokens'
+  const params: unknown[] = []
+
   if (questionnaireId) {
-    tokensQuery = tokensQuery.eq('questionnaire_id', questionnaireId)
-  }
-  const { data: tokens, error: tokensError } = await tokensQuery
-
-  if (tokensError) {
-    throw new Error(`获取问卷令牌失败: ${tokensError.message}`)
+    tokensSql += ' WHERE questionnaire_id = ?'
+    params.push(questionnaireId)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const totalSent = (tokens as any[])?.length || 0
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tokenResponded = (tokens as any[])?.filter((t: any) => t.used).length || 0
+  const tokensResults = db.exec(tokensSql, params)
+  const tokens = tokensResults[0]?.values || []
+
+  const totalSent = tokens.length
+  const tokenResponded = tokens.filter((t) => t[4] === 1).length
 
   // 获取手动导入的回答数量
-  let responsesQuery = supabaseAny
-    .from('survey_responses')
-    .select('id', { count: 'exact', head: true })
-    .eq('submit_channel', 'manual')
-  if (questionnaireId) {
-    responsesQuery = responsesQuery.eq('questionnaire_id', questionnaireId)
-  }
-  const { count: manualResponded } = await responsesQuery
+  let responsesSql = "SELECT COUNT(*) as count FROM survey_responses WHERE submit_channel = 'manual'"
+  const responseParams: unknown[] = []
 
-  const totalResponded = tokenResponded + (manualResponded || 0)
+  if (questionnaireId) {
+    responsesSql += ' AND questionnaire_id = ?'
+    responseParams.push(questionnaireId)
+  }
+
+  const responsesResults = db.exec(responsesSql, responseParams)
+  const manualResponded = responsesResults[0]?.values[0]?.[0] as number || 0
+
+  const totalResponded = tokenResponded + manualResponded
   const responseRate = totalSent > 0 ? (totalResponded / totalSent) * 100 : 0
 
   return {
@@ -332,35 +398,11 @@ export async function getSurveyResponseRate(
 }
 
 /**
- * 删除问卷（服务端）
- */
-export async function deleteQuestionnaire(id: string): Promise<void> {
-  const supabase = await createSupabaseServerClient()
-
-  const { error } = await supabase
-    .from('questionnaires')
-    .delete()
-    .eq('id', id)
-
-  if (error) {
-    throw new Error(`删除问卷失败: ${error.message}`)
-  }
-}
-
-/**
  * 获取活跃问卷（客户端）
+ * 注：SQLite 不支持直接客户端访问，返回空数组
  */
 export async function getActiveQuestionnairesClient(): Promise<Questionnaire[]> {
-  const supabase = createSupabaseBrowserClient()
-  const { data, error } = await supabase
-    .from('questionnaires')
-    .select('*')
-    .eq('status', 'active')
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    throw new Error(`获取活跃问卷失败: ${error.message}`)
-  }
-
-  return (data || []) as Questionnaire[]
+  // SQLite 实现不支持客户端直接访问，需要通过 API
+  // 返回空数组或抛出错误提示使用 API
+  return []
 }
