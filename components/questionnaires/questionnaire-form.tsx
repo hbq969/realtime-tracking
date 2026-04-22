@@ -15,13 +15,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { QuestionEditor } from './question-editor'
-import type { Question, Questionnaire } from '@/types/questionnaire'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { AlertTriangle, ExternalLink } from 'lucide-react'
+import type { Questionnaire } from '@/types/questionnaire'
 
 const formSchema = z.object({
   title: z.string().min(1, '请输入问卷标题'),
   description: z.string().optional(),
   status: z.enum(['draft', 'active', 'archived']),
+  external_url: z
+    .string()
+    .min(1, '请输入问卷链接')
+    .url('请输入有效的问卷链接'),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -31,7 +36,8 @@ interface QuestionnaireFormProps {
   onSubmit: (data: {
     title: string
     description?: string
-    questions: Question[]
+    external_url: string
+    external_type: 'tencent'
     status: 'draft' | 'active' | 'archived'
   }) => Promise<void>
   isEdit?: boolean
@@ -43,9 +49,6 @@ export function QuestionnaireForm({
   isEdit,
 }: QuestionnaireFormProps) {
   const [loading, setLoading] = useState(false)
-  const [questions, setQuestions] = useState<Question[]>(
-    defaultValues?.questions || []
-  )
   const [selectedStatus, setSelectedStatus] = useState<'draft' | 'active' | 'archived'>(
     defaultValues?.status || 'draft'
   )
@@ -61,27 +64,17 @@ export function QuestionnaireForm({
       title: '',
       description: '',
       status: 'draft',
+      external_url: '',
       ...defaultValues,
     },
   })
 
   const handleFormSubmit = async (data: FormValues) => {
-    if (questions.length === 0) {
-      alert('请至少添加一个问题')
-      return
-    }
-
-    const hasEmptyTitle = questions.some((q) => !q.title.trim())
-    if (hasEmptyTitle) {
-      alert('请完善所有问题标题')
-      return
-    }
-
     setLoading(true)
     try {
       await onSubmit({
         ...data,
-        questions,
+        external_type: 'tencent',
       })
     } finally {
       setLoading(false)
@@ -112,6 +105,45 @@ export function QuestionnaireForm({
         />
       </div>
 
+      <div className="space-y-2">
+        <Label htmlFor="external_url">
+          问卷链接
+          <span className="text-red-500 ml-1">*</span>
+        </Label>
+        <Input
+          id="external_url"
+          placeholder="请输入腾讯问卷链接，如：https://wj.qq.com/s2/xxxxx"
+          {...register('external_url')}
+        />
+        {errors.external_url && (
+          <p className="text-sm text-red-500">{errors.external_url.message}</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          请在腾讯问卷平台创建问卷后，将问卷链接粘贴到此处
+        </p>
+      </div>
+
+      <Alert variant="warning">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>重要提示</AlertTitle>
+        <AlertDescription className="mt-2">
+          <p className="mb-2">
+            请确保在腾讯问卷中已添加以下必填题，否则导入数据时无法匹配员工身份：
+          </p>
+          <ul className="list-disc list-inside space-y-1 text-sm">
+            <li>
+              <strong>姓名</strong>（单行文本，必填）
+            </li>
+            <li>
+              <strong>手机号</strong>（单行文本，必填）
+            </li>
+          </ul>
+          <p className="mt-2 text-sm">
+            这两个题目用于将问卷回答关联到对应的离职员工。
+          </p>
+        </AlertDescription>
+      </Alert>
+
       {isEdit && (
         <div className="space-y-2">
           <Label htmlFor="status">问卷状态</Label>
@@ -136,11 +168,6 @@ export function QuestionnaireForm({
           </Select>
         </div>
       )}
-
-      <div className="space-y-2">
-        <Label>问题列表</Label>
-        <QuestionEditor questions={questions} onChange={setQuestions} />
-      </div>
 
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? '保存中...' : isEdit ? '保存修改' : '创建问卷'}
