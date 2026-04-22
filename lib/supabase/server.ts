@@ -16,7 +16,11 @@ export async function createSupabaseServerClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, {
+                ...options,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+              })
             )
           } catch {
             // Server Component中调用时可能失败，可忽略
