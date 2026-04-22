@@ -27,7 +27,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { updateQuestionnaire, generateSurveyToken, sendQuestionnaireEmail } from '@/lib/actions/questionnaires'
-import { Edit, Users, Send, Link2, Copy, Check, X, Mail, Key, QrCode, ExternalLink } from 'lucide-react'
+import { SurveyDataImport } from './survey-data-import'
+import { Edit, Users, Send, Link2, Copy, Check, X, Mail, Key, QrCode, ExternalLink, Upload } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -271,6 +272,10 @@ export function QuestionnaireDetail({
             <Send className="h-4 w-4 mr-2" />
             发送问卷
           </TabsTrigger>
+          <TabsTrigger value="import">
+            <Upload className="h-4 w-4 mr-2" />
+            数据导入
+          </TabsTrigger>
           <TabsTrigger value="stats">
             <Users className="h-4 w-4 mr-2" />
             统计数据
@@ -430,6 +435,10 @@ export function QuestionnaireDetail({
             </CardContent>
           </Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="import" className="mt-4">
+          <SurveyDataImport questionnaireId={questionnaire.id} />
         </TabsContent>
 
         <TabsContent value="stats" className="mt-4">

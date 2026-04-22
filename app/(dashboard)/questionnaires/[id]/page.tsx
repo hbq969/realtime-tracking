@@ -37,7 +37,7 @@ export default async function QuestionnaireDetailPage({ params, searchParams }: 
         questionnaire={questionnaire}
         employees={employees}
         responseRate={responseRate}
-        defaultTab={tab || 'questions'}
+        defaultTab={tab || 'send'}
       />
     </div>
   )
