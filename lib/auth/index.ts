@@ -5,6 +5,9 @@ import { cookies } from 'next/headers'
 import crypto from 'crypto'
 import { ADMIN_CREDENTIALS, SESSION_CONFIG } from './config'
 
+// 导出配置供 middleware 使用
+export { SESSION_CONFIG } from './config'
+
 // 存储有效的 session tokens (简单实现，生产环境建议使用 Redis 等)
 const validSessions = new Set<string>()
 
@@ -45,7 +48,7 @@ export async function createSession(): Promise<string> {
 }
 
 /**
- * 验证 session
+ * 验证 session (用于 Server Actions 和 Server Components)
  */
 export async function verifySession(): Promise<boolean> {
   const cookieStore = await cookies()
@@ -56,6 +59,17 @@ export async function verifySession(): Promise<boolean> {
   }
 
   return validSessions.has(session.value)
+}
+
+/**
+ * 验证 session (用于 middleware)
+ * @param sessionToken - 从 request cookies 中获取的 session token
+ */
+export function verifySessionToken(sessionToken: string | undefined): boolean {
+  if (!sessionToken) {
+    return false
+  }
+  return validSessions.has(sessionToken)
 }
 
 /**
