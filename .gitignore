@@ -52,3 +52,12 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+
+# SQLite 数据库文件
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# 上传文件
+uploads/*
+!uploads/.gitkeep
