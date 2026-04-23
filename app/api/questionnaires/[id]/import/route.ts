@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { getDb, saveDatabase, generateId } from '@/lib/db'
 import { getQuestionnaireById } from '@/lib/db/questionnaires'
 
 interface ImportData {
@@ -26,29 +26,27 @@ export async function POST(
       return NextResponse.json({ error: '问卷不存在' }, { status: 404 })
     }
 
-    const supabase = await createSupabaseServerClient()
+    const db = await getDb()
+    let imported = 0
 
     // 插入数据
-    const insertData = data.map(row => ({
-      employee_id: row.employeeId,
-      questionnaire_id: id,
-      answers: row.answers,
-      submit_channel: 'manual',
-      submitted_at: row.submittedAt,
-    }))
+    for (const row of data) {
+      const responseId = generateId()
+      const answersJson = JSON.stringify(row.answers)
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any)
-      .from('survey_responses')
-      .insert(insertData)
-
-    if (error) {
-      throw new Error(`导入失败: ${error.message}`)
+      db.run(
+        `INSERT INTO survey_responses (id, employee_id, questionnaire_id, answers, submit_channel, submitted_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [responseId, row.employeeId, id, answersJson, 'manual', row.submittedAt]
+      )
+      imported++
     }
+
+    saveDatabase()
 
     return NextResponse.json({
       success: true,
-      imported: data.length,
+      imported,
     })
   } catch (error) {
     console.error('导入问卷数据失败:', error)

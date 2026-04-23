@@ -1,6 +1,8 @@
 import { getFollowUpPlans } from '@/lib/db/follow-ups'
 import { FollowUpList } from '@/components/follow-ups/follow-up-list'
 
+export const dynamic = 'force-dynamic'
+
 export default async function FollowUpsPage() {
   const { data: plans } = await getFollowUpPlans()
 

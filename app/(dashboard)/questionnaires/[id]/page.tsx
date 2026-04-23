@@ -11,6 +11,8 @@ interface PageProps {
   searchParams: Promise<{ tab?: string }>
 }
 
+export const dynamic = 'force-dynamic'
+
 export default async function QuestionnaireDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params
   const { tab } = await searchParams

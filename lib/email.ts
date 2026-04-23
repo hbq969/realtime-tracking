@@ -2,13 +2,13 @@
  * 邮件发送服务 (SMTP)
  */
 import nodemailer from 'nodemailer'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 interface SendEmailParams {
   to: string | string[]
   subject: string
   html: string
   smtpPassword: string // 授权码由前端传入
+  senderEmail?: string // 发件人邮箱
 }
 
 // 创建邮件传输器
@@ -16,27 +16,12 @@ function createTransporter(userEmail: string, password: string) {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.cmss.chinamobile.com',
     port: parseInt(process.env.SMTP_PORT || '465'),
-    secure: true, // 465 端口使用 SSL
+    secure: true,
     auth: {
       user: userEmail,
       pass: password,
     },
   })
-}
-
-/**
- * 获取当前登录用户邮箱
- */
-async function getCurrentUserEmail(): Promise<string | null> {
-  try {
-    const supabase = await createSupabaseServerClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    return user?.email || null
-  } catch {
-    return null
-  }
 }
 
 /**
@@ -47,14 +32,15 @@ export async function sendEmail({
   subject,
   html,
   smtpPassword,
+  senderEmail,
 }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
-  // 获取当前登录用户邮箱作为发件人
-  const fromEmail = await getCurrentUserEmail()
+  // 使用传入的发件人邮箱或默认管理员邮箱
+  const fromEmail = senderEmail || process.env.DEFAULT_SENDER_EMAIL || process.env.SMTP_USER || ''
 
   if (!fromEmail) {
     return {
       success: false,
-      error: '无法获取当前登录用户信息，请重新登录',
+      error: '未配置发件人邮箱',
     }
   }
 
@@ -98,16 +84,17 @@ export async function sendEmailWithAttachment(params: {
     cid?: string // 内嵌图片的 content-id
   }>
   smtpPassword: string
+  senderEmail?: string
 }): Promise<{ success: boolean; error?: string }> {
-  const { to, subject, text, html, attachments, smtpPassword } = params
+  const { to, subject, text, html, attachments, smtpPassword, senderEmail } = params
 
-  // 获取当前登录用户邮箱作为发件人
-  const fromEmail = await getCurrentUserEmail()
+  // 使用传入的发件人邮箱或默认管理员邮箱
+  const fromEmail = senderEmail || process.env.DEFAULT_SENDER_EMAIL || process.env.SMTP_USER || ''
 
   if (!fromEmail) {
     return {
       success: false,
-      error: '无法获取当前登录用户信息，请重新登录',
+      error: '未配置发件人邮箱',
     }
   }
 
@@ -163,11 +150,12 @@ export async function sendQuestionnaireInvitation(params: {
   surveyLink: string
   expiresInDays: number
   smtpPassword: string
+  senderEmail?: string
   customSubject?: string
   customBody?: string
   qrCodeBuffer?: Buffer
 }): Promise<{ success: boolean; error?: string }> {
-  const { to, employeeName, questionnaireTitle, surveyLink, expiresInDays, smtpPassword, customSubject, customBody, qrCodeBuffer } = params
+  const { to, employeeName, questionnaireTitle, surveyLink, expiresInDays, smtpPassword, senderEmail, customSubject, customBody, qrCodeBuffer } = params
 
   // 获取当前日期
   const now = new Date()
@@ -243,7 +231,7 @@ export async function sendQuestionnaireInvitation(params: {
 <body>
 ${htmlContent}
 
-<p style="color: #e74c3c; font-size: 14px; margin-top: 20px;">⏰ 此链接将在 ${expiresInDays} 天后过期，请尽快完成填写。</p>
+<p style="color: #e74c3c; font-size: 14px; margin-top: 20px;">此链接将在 ${expiresInDays} 天后过期，请尽快完成填写。</p>
 <p style="text-align: center; color: #888; font-size: 12px; margin-top: 20px;">此邮件由系统自动发送，请勿直接回复。</p>
 </body>
 </html>`
@@ -263,6 +251,7 @@ ${htmlContent}
         cid: 'qrcode@survey',
       }],
       smtpPassword,
+      senderEmail,
     })
   }
 
@@ -272,5 +261,6 @@ ${htmlContent}
     subject,
     html,
     smtpPassword,
+    senderEmail,
   })
 }

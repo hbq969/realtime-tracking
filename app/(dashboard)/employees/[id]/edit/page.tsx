@@ -2,6 +2,8 @@ import { notFound, redirect } from 'next/navigation'
 import { getEmployeeById } from '@/lib/db/employees'
 import { EditEmployeeForm } from './edit-form'
 
+export const dynamic = 'force-dynamic'
+
 export default async function EditEmployeePage({
   params,
 }: {

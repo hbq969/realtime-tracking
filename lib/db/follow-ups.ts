@@ -4,6 +4,9 @@
 import { getDb, saveDatabase, generateId } from './index'
 import type { FollowUpPlan, FollowUpRecord, FollowUpRecordFormData } from '@/types/follow-up'
 
+// SQL 参数类型
+type SqlParam = string | number | null | Uint8Array
+
 // 分页参数
 interface PaginationParams {
   page?: number
@@ -69,13 +72,13 @@ export async function getFollowUpPlans(
   filters: FollowUpFilters = {},
   pagination: PaginationParams = {}
 ): Promise<PaginatedResult<FollowUpPlan>> {
-  const db = getDb()
+  const db = await getDb()
   const { page = 1, pageSize = 10 } = pagination
   const offset = (page - 1) * pageSize
 
   // 构建 WHERE 子句
   const conditions: string[] = []
-  const params: unknown[] = []
+  const params: SqlParam[] = []
 
   if (filters.status) {
     conditions.push('status = ?')
@@ -151,7 +154,7 @@ export async function getFollowUpPlans(
  * 根据ID获取回访计划（服务端）
  */
 export async function getFollowUpPlanById(id: string): Promise<FollowUpPlan | null> {
-  const db = getDb()
+  const db = await getDb()
 
   const results = db.exec('SELECT * FROM follow_up_plans WHERE id = ?', [id])
   const rows = results[0]?.values || []
@@ -164,7 +167,7 @@ export async function getFollowUpPlanById(id: string): Promise<FollowUpPlan | nu
 
   // 查询关联的员工信息
   const employeeResults = db.exec(
-    'SELECT name, phone, department FROM employees WHERE id = ?',
+    'SELECT name, phone, department, team FROM employees WHERE id = ?',
     [plan.employee_id]
   )
   const employeeRow = employeeResults[0]?.values?.[0]
@@ -173,6 +176,7 @@ export async function getFollowUpPlanById(id: string): Promise<FollowUpPlan | nu
       name: employeeRow[0] as string,
       phone: employeeRow[1] as string,
       department: employeeRow[2] as string,
+      team: employeeRow[3] as string | undefined,
     }
   }
 
@@ -189,7 +193,7 @@ export async function createFollowUpPlan(
     follow_up_type: '1m' | '3m' | '6m' | 'custom'
   }
 ): Promise<FollowUpPlan> {
-  const db = getDb()
+  const db = await getDb()
   const id = generateId()
   const now = new Date().toISOString()
 
@@ -221,7 +225,7 @@ export async function createFollowUpRecord(
   employeeId: string,
   recordData: FollowUpRecordFormData
 ): Promise<FollowUpRecord> {
-  const db = getDb()
+  const db = await getDb()
 
   // 创建回访记录
   const id = generateId()
@@ -272,7 +276,7 @@ export async function createFollowUpRecord(
 export async function getUpcomingFollowUps(
   days: number = 7
 ): Promise<FollowUpPlan[]> {
-  const db = getDb()
+  const db = await getDb()
   const today = new Date().toISOString().split('T')[0]
   const endDate = new Date()
   endDate.setDate(endDate.getDate() + days)
@@ -293,7 +297,7 @@ export async function getUpcomingFollowUps(
   // 查询关联的员工信息
   for (const plan of plans) {
     const employeeResults = db.exec(
-      'SELECT name, phone, department FROM employees WHERE id = ?',
+      'SELECT name, phone, department, team FROM employees WHERE id = ?',
       [plan.employee_id]
     )
     const employeeRow = employeeResults[0]?.values?.[0]
@@ -302,6 +306,7 @@ export async function getUpcomingFollowUps(
         name: employeeRow[0] as string,
         phone: employeeRow[1] as string,
         department: employeeRow[2] as string,
+        team: employeeRow[3] as string | undefined,
       }
     }
   }
@@ -320,7 +325,7 @@ export async function getFollowUpStats(): Promise<{
   byType: Record<string, number>
   byContactMethod: Record<string, number>
 }> {
-  const db = getDb()
+  const db = await getDb()
 
   // 获取所有计划
   const plansResults = db.exec('SELECT status, follow_up_type, plan_date FROM follow_up_plans')
@@ -403,7 +408,7 @@ export async function createDefaultFollowUpPlans(
 export async function getFollowUpRecordsByEmployee(
   employeeId: string
 ): Promise<FollowUpRecord[]> {
-  const db = getDb()
+  const db = await getDb()
 
   const results = db.exec(
     'SELECT * FROM follow_up_records WHERE employee_id = ? ORDER BY created_at DESC',

@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { updateQuestionnaire, sendQuestionnaireEmail } from '@/lib/actions/questionnaires'
+import { updateQuestionnaire, sendQuestionnaireEmail, refreshQuestionnaireStats } from '@/lib/actions/questionnaires'
 import { SurveyDataImport } from './survey-data-import'
 import { Edit, Users, Send, X, Mail, Key, Copy, ExternalLink, Upload } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -236,9 +236,10 @@ export function QuestionnaireDetail({
       </div>
 
       {/* 标签页 */}
-      <Tabs defaultValue={defaultTab} onValueChange={(value) => {
+      <Tabs defaultValue={defaultTab} onValueChange={async (value) => {
         if (value === 'stats') {
-          router.refresh()
+          const stats = await refreshQuestionnaireStats(questionnaire.id)
+          setResponseRate(stats)
         }
       }}>
         <TabsList>
@@ -312,13 +313,17 @@ export function QuestionnaireDetail({
                 )}
 
                 {/* 员工列表 */}
-                <div className="border rounded-md max-h-60 overflow-y-auto">
+                <div className="border rounded-md max-h-80 overflow-y-auto">
                   <div className="flex items-center gap-2 p-2 bg-slate-100 border-b font-medium text-sm text-slate-600">
-                    <div className="w-5" />
-                    <span className="flex-1">姓名</span>
-                    <span className="w-24">班组</span>
-                    <span className="w-28">离职日期</span>
-                    <span className="w-24">部门</span>
+                    <div className="w-5 shrink-0" />
+                    <span className="w-16 shrink-0">姓名</span>
+                    <span className="w-28 shrink-0">部门</span>
+                    <span className="w-24 shrink-0">岗位</span>
+                    <span className="w-24 shrink-0">班组</span>
+                    <span className="w-24 shrink-0">离职日期</span>
+                    <span className="w-16 shrink-0">在职时长</span>
+                    <span className="w-28 shrink-0">电话</span>
+                    <span className="flex-1 min-w-0">邮箱</span>
                   </div>
                   {employees.map((emp) => (
                     <div
@@ -330,10 +335,14 @@ export function QuestionnaireDetail({
                         checked={selectedEmployeeIds.includes(emp.id)}
                         onCheckedChange={() => toggleEmployee(emp.id)}
                       />
-                      <span className="flex-1 font-medium">{emp.name}</span>
-                      <span className="text-sm text-slate-500 w-24">{emp.team || '-'}</span>
-                      <span className="text-sm text-slate-500 w-28">{emp.leave_date || '-'}</span>
-                      <span className="text-sm text-slate-500 w-24">{emp.department || '-'}</span>
+                      <span className="w-16 shrink-0 font-medium truncate">{emp.name}</span>
+                      <span className="text-sm text-slate-500 w-28 shrink-0 truncate">{emp.department || '-'}</span>
+                      <span className="text-sm text-slate-500 w-24 shrink-0 truncate">{emp.position || '-'}</span>
+                      <span className="text-sm text-slate-500 w-24 shrink-0 truncate">{emp.team || '-'}</span>
+                      <span className="text-sm text-slate-500 w-24 shrink-0">{emp.leave_date || '-'}</span>
+                      <span className="text-sm text-slate-500 w-16 shrink-0">{emp.employment_duration ? `${emp.employment_duration}月` : '-'}</span>
+                      <span className="text-sm text-slate-500 w-28 shrink-0">{emp.phone || '-'}</span>
+                      <span className="text-sm text-slate-500 flex-1 min-w-0 truncate">{emp.email || '-'}</span>
                     </div>
                   ))}
                 </div>
@@ -358,14 +367,19 @@ export function QuestionnaireDetail({
         <TabsContent value="import" className="mt-4">
           <SurveyDataImport
             questionnaireId={questionnaire.id}
-            onSuccess={() => router.refresh()}
+            onSuccess={async () => {
+              const stats = await refreshQuestionnaireStats(questionnaire.id)
+              setResponseRate(stats)
+              router.refresh()
+            }}
           />
         </TabsContent>
 
         <TabsContent value="stats" className="mt-4">
           <div className="flex justify-end mb-4">
-            <Button variant="outline" size="sm" onClick={() => {
-              router.refresh()
+            <Button variant="outline" size="sm" onClick={async () => {
+              const stats = await refreshQuestionnaireStats(questionnaire.id)
+              setResponseRate(stats)
               toast.success('统计数据已刷新')
             }}>
               刷新统计数据
@@ -374,13 +388,13 @@ export function QuestionnaireDetail({
           <div className="grid grid-cols-3 gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>发送数量</CardDescription>
+                <CardDescription>发送员工数</CardDescription>
                 <CardTitle className="text-3xl">{responseRate.totalSent}</CardTitle>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>回答数量</CardDescription>
+                <CardDescription>回答员工数</CardDescription>
                 <CardTitle className="text-3xl">{responseRate.totalResponded}</CardTitle>
               </CardHeader>
             </Card>

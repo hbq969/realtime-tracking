@@ -12,15 +12,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useRouter } from 'next/navigation'
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 export function Header() {
   const router = useRouter()
 
   const handleLogout = async () => {
     try {
-      const supabase = createSupabaseBrowserClient()
-      await supabase.auth.signOut()
+      // 调用登出 API
+      await fetch('/api/auth/logout', { method: 'POST' })
       router.push('/login')
       router.refresh()
     } catch (error) {

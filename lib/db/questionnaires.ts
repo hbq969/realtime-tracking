@@ -4,6 +4,9 @@
 import { getDb, saveDatabase, generateId } from './index'
 import type { Questionnaire, Question, ExternalType } from '@/types/questionnaire'
 
+// SQL 参数类型
+type SqlParam = string | number | null | Uint8Array
+
 // 分页参数
 interface PaginationParams {
   page?: number
@@ -50,13 +53,13 @@ export async function getQuestionnaires(
   filters: QuestionnaireFilters = {},
   pagination: PaginationParams = {}
 ): Promise<PaginatedResult<Questionnaire>> {
-  const db = getDb()
+  const db = await getDb()
   const { page = 1, pageSize = 10 } = pagination
   const offset = (page - 1) * pageSize
 
   // 构建 WHERE 子句
   const conditions: string[] = []
-  const params: unknown[] = []
+  const params: SqlParam[] = []
 
   if (filters.status) {
     conditions.push('status = ?')
@@ -93,7 +96,7 @@ export async function getQuestionnaires(
  * 根据ID获取问卷（服务端）
  */
 export async function getQuestionnaireById(id: string): Promise<Questionnaire | null> {
-  const db = getDb()
+  const db = await getDb()
 
   const results = db.exec('SELECT * FROM questionnaires WHERE id = ?', [id])
   const rows = results[0]?.values || []
@@ -120,7 +123,7 @@ export async function createQuestionnaire(
     email_body?: string
   }
 ): Promise<Questionnaire> {
-  const db = getDb()
+  const db = await getDb()
   const id = generateId()
   const now = new Date().toISOString()
 
@@ -163,11 +166,11 @@ export async function updateQuestionnaire(
     email_body: string
   }>
 ): Promise<Questionnaire> {
-  const db = getDb()
+  const db = await getDb()
 
   // 构建更新字段
   const updates: string[] = []
-  const params: unknown[] = []
+  const params: SqlParam[] = []
 
   if (questionnaireData.title !== undefined) {
     updates.push('title = ?')
@@ -227,7 +230,7 @@ export async function updateQuestionnaire(
  * 删除问卷（服务端）
  */
 export async function deleteQuestionnaire(id: string): Promise<void> {
-  const db = getDb()
+  const db = await getDb()
 
   db.run('DELETE FROM questionnaires WHERE id = ?', [id])
   saveDatabase()
@@ -241,7 +244,7 @@ export async function generateSurveyToken(
   questionnaireId: string,
   expiresInDays: number = 30
 ): Promise<string> {
-  const db = getDb()
+  const db = await getDb()
 
   // 生成随机令牌
   const token = crypto.randomUUID().replace(/-/g, '').toUpperCase()
@@ -268,7 +271,7 @@ export async function generateSurveyToken(
 export async function validateSurveyToken(
   token: string
 ): Promise<{ valid: boolean; employeeId?: string; questionnaireId?: string; error?: string }> {
-  const db = getDb()
+  const db = await getDb()
 
   const results = db.exec(
     'SELECT * FROM survey_tokens WHERE token = ?',
@@ -309,7 +312,7 @@ export async function submitSurveyResponse(
   token: string,
   answers: Record<string, string | string[]>
 ): Promise<void> {
-  const db = getDb()
+  const db = await getDb()
 
   // 验证令牌
   const validation = await validateSurveyToken(token)
@@ -358,36 +361,21 @@ export async function getSurveyResponseRate(
   totalResponded: number
   responseRate: number
 }> {
-  const db = getDb()
+  const db = await getDb()
 
-  // 获取发送的令牌数量
-  let tokensSql = 'SELECT * FROM survey_tokens'
-  const params: unknown[] = []
+  const whereClause = questionnaireId ? 'WHERE questionnaire_id = ?' : ''
+  const params: SqlParam[] = questionnaireId ? [questionnaireId] : []
 
-  if (questionnaireId) {
-    tokensSql += ' WHERE questionnaire_id = ?'
-    params.push(questionnaireId)
-  }
+  // 分母：被发送过问卷的离职员工数（按 employee_id 去重）
+  const sentSql = `SELECT COUNT(DISTINCT employee_id) as count FROM survey_tokens ${whereClause}`
+  const sentResults = db.exec(sentSql, params)
+  const totalSent = sentResults[0]?.values[0]?.[0] as number || 0
 
-  const tokensResults = db.exec(tokensSql, params)
-  const tokens = tokensResults[0]?.values || []
+  // 分子：有回答的离职员工数（按 employee_id 去重）
+  const respondedSql = `SELECT COUNT(DISTINCT employee_id) as count FROM survey_responses ${whereClause}`
+  const respondedResults = db.exec(respondedSql, params)
+  const totalResponded = respondedResults[0]?.values[0]?.[0] as number || 0
 
-  const totalSent = tokens.length
-  const tokenResponded = tokens.filter((t) => t[4] === 1).length
-
-  // 获取手动导入的回答数量
-  let responsesSql = "SELECT COUNT(*) as count FROM survey_responses WHERE submit_channel = 'manual'"
-  const responseParams: unknown[] = []
-
-  if (questionnaireId) {
-    responsesSql += ' AND questionnaire_id = ?'
-    responseParams.push(questionnaireId)
-  }
-
-  const responsesResults = db.exec(responsesSql, responseParams)
-  const manualResponded = responsesResults[0]?.values[0]?.[0] as number || 0
-
-  const totalResponded = tokenResponded + manualResponded
   const responseRate = totalSent > 0 ? (totalResponded / totalSent) * 100 : 0
 
   return {

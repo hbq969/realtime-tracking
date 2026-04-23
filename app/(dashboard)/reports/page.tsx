@@ -30,6 +30,8 @@ const reportTypeColors: Record<string, 'default' | 'secondary' | 'outline' | 'de
   retention: 'default',
 }
 
+export const dynamic = 'force-dynamic'
+
 export default async function ReportsPage() {
   const { data: reports } = await getReports({ pageSize: 50 })
 

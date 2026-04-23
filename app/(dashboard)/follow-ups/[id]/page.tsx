@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, use, useEffect } from 'react'
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { getFollowUpPlanById, createFollowUpRecord } from '@/lib/db/follow-ups'
+import { getEmployeeById } from '@/lib/db/employees'
 import { FollowUpForm } from '@/components/follow-ups/follow-up-form'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -34,6 +35,8 @@ interface FollowUpRecord {
   created_at: string
 }
 
+export const dynamic = 'force-dynamic'
+
 export default function FollowUpDetailPage({
   params,
 }: {
@@ -47,55 +50,19 @@ export default function FollowUpDetailPage({
 
   useEffect(() => {
     const fetchData = async () => {
-      const supabase = createSupabaseBrowserClient()
-
-      // 获取回访计划
-      const { data: planData, error: planError } = await supabase
-        .from('follow_up_plans')
-        .select(
-          `
-          *,
-          employees (
-            name,
-            phone,
-            department,
-            team
-          )
-        `
-        )
-        .eq('id', id)
-        .single()
-
-      if (planError) {
-        toast.error('获取回访计划失败')
-        return
-      }
-
-      setPlan({
-        ...(planData as any),
-        employee: (planData as any).employees
-          ? {
-              name: (planData as any).employees.name,
-              phone: (planData as any).employees.phone,
-              department: (planData as any).employees.department,
-              team: (planData as any).employees.team,
-            }
-          : undefined,
-      } as FollowUpPlan)
-
-      // 如果已完成，获取回访记录
-      if ((planData as any).status === 'completed') {
-        const { data: recordData, error: recordError } = await supabase
-          .from('follow_up_records')
-          .select('*')
-          .eq('plan_id', id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
-
-        if (!recordError && recordData) {
-          setRecord(recordData as FollowUpRecord)
+      try {
+        // 通过 API 获取回访计划
+        const response = await fetch(`/api/follow-ups/${id}`)
+        if (!response.ok) {
+          toast.error('获取回访计划失败')
+          return
         }
+
+        const data = await response.json()
+        setPlan(data.plan)
+        setRecord(data.record)
+      } catch (error) {
+        toast.error('获取回访计划失败')
       }
     }
     fetchData()
@@ -116,46 +83,25 @@ export default function FollowUpDetailPage({
     }
     setIsLoading(true)
     try {
-      const supabase = createSupabaseBrowserClient()
-
-      // 创建回访记录
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: recordError } = await (supabase as any).from('follow_up_records').insert({
-        plan_id: id,
-        employee_id: plan.employee_id,
-        contact_method: data.contact_method,
-        contact_result: data.contact_result,
-        new_company: data.new_company || null,
-        new_position: data.new_position || null,
-        salary_change: data.salary_change || null,
-        personal_feeling: data.personal_feeling || null,
-        suggestions: data.suggestions || null,
+      // 通过 API 创建回访记录
+      const response = await fetch(`/api/follow-ups/${id}/records`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: plan.employee_id,
+          contact_method: data.contact_method,
+          contact_result: data.contact_result,
+          new_company: data.new_company || null,
+          new_position: data.new_position || null,
+          salary_change: data.salary_change || null,
+          personal_feeling: data.personal_feeling || null,
+          suggestions: data.suggestions || null,
+        }),
       })
 
-      if (recordError) {
-        throw new Error(recordError.message)
-      }
-
-      // 更新回访计划状态
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: updateError } = await (supabase as any)
-        .from('follow_up_plans')
-        .update({ status: 'completed' })
-        .eq('id', id)
-
-      if (updateError) {
-        throw new Error(updateError.message)
-      }
-
-      // 更新员工状态
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: employeeUpdateError } = await (supabase as any)
-        .from('employees')
-        .update({ status: 'followed', updated_at: new Date().toISOString() })
-        .eq('id', plan.employee_id)
-
-      if (employeeUpdateError) {
-        throw new Error(employeeUpdateError.message)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || '提交失败')
       }
 
       toast.success('回访记录已提交')

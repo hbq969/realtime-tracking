@@ -4,6 +4,9 @@
 import { getDb, saveDatabase, generateId } from './index'
 import type { EmployeeFormData } from '@/types/employee'
 
+// SQL 参数类型
+type SqlParam = string | number | null | Uint8Array
+
 // 员工类型定义
 export interface Employee {
   id: string
@@ -75,13 +78,13 @@ export async function getEmployees(
   filters: EmployeeFilters = {},
   pagination: PaginationParams = {}
 ): Promise<PaginatedResult<Employee>> {
-  const db = getDb()
+  const db = await getDb()
   const { page = 1, pageSize = 10 } = pagination
   const offset = (page - 1) * pageSize
 
   // 构建 WHERE 子句
   const conditions: string[] = []
-  const params: unknown[] = []
+  const params: SqlParam[] = []
 
   if (filters.department) {
     conditions.push('department = ?')
@@ -131,7 +134,7 @@ export async function getEmployees(
  * 根据ID获取员工（服务端）
  */
 export async function getEmployeeById(id: string): Promise<Employee | null> {
-  const db = getDb()
+  const db = await getDb()
 
   const results = db.exec('SELECT * FROM employees WHERE id = ?', [id])
   const rows = results[0]?.values || []
@@ -149,7 +152,7 @@ export async function getEmployeeById(id: string): Promise<Employee | null> {
 export async function createEmployee(
   employeeData: EmployeeFormData & { reporter_id?: string }
 ): Promise<Employee> {
-  const db = getDb()
+  const db = await getDb()
   const id = generateId()
   const now = new Date().toISOString()
 
@@ -188,12 +191,12 @@ export async function updateEmployee(
   id: string,
   employeeData: Partial<EmployeeFormData & { status?: 'pending' | 'followed' }>
 ): Promise<Employee> {
-  const db = getDb()
+  const db = await getDb()
   const now = new Date().toISOString()
 
   // 构建更新字段
   const updates: string[] = ['updated_at = ?']
-  const params: unknown[] = [now]
+  const params: SqlParam[] = [now]
 
   if (employeeData.name !== undefined) {
     updates.push('name = ?')
@@ -253,7 +256,7 @@ export async function updateEmployee(
  * 删除员工（服务端）
  */
 export async function deleteEmployee(id: string): Promise<void> {
-  const db = getDb()
+  const db = await getDb()
 
   db.run('DELETE FROM employees WHERE id = ?', [id])
   saveDatabase()
@@ -265,7 +268,7 @@ export async function deleteEmployee(id: string): Promise<void> {
 export async function importEmployees(
   employees: Array<EmployeeFormData & { reporter_id?: string }>
 ): Promise<{ success: number; failed: number; errors: string[] }> {
-  const db = getDb()
+  const db = await getDb()
   const results = { success: 0, failed: 0, errors: [] as string[] }
 
   for (const [index, employee] of employees.entries()) {
@@ -318,7 +321,7 @@ export async function getEmployeeStats(): Promise<{
   byDepartment: Record<string, number>
   byLeaveReason: Record<string, number>
 }> {
-  const db = getDb()
+  const db = await getDb()
 
   const results = db.exec('SELECT status, department, leave_reason FROM employees')
   const rows = results[0]?.values || []

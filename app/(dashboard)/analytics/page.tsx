@@ -1,10 +1,17 @@
 import { getEmployeeStats } from '@/lib/db/employees'
 import { getFollowUpStats } from '@/lib/db/follow-ups'
+import { initDatabase } from '@/lib/db'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PieChart } from '@/components/analytics/pie-chart'
 import { BarChart } from '@/components/analytics/bar-chart'
 
+// 强制动态渲染
+export const dynamic = 'force-dynamic'
+
 export default async function AnalyticsPage() {
+  // 确保数据库已初始化
+  await initDatabase()
+
   const employeeStats = await getEmployeeStats()
   const followUpStats = await getFollowUpStats()
 

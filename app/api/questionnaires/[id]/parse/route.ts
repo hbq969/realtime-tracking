@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { getDb, saveDatabase } from '@/lib/db'
 import { parseTencentSurveyRow, type ImportRow, type ParsedRow } from '@/lib/import/survey-data'
 
 /**
@@ -8,28 +8,24 @@ import { parseTencentSurveyRow, type ImportRow, type ParsedRow } from '@/lib/imp
 async function matchEmployee(
   name: string | null
 ): Promise<{ id: string; status: 'matched' | 'not_found' | 'multiple_match'; error?: string }> {
-  const supabase = await createSupabaseServerClient()
+  const db = await getDb()
 
   if (!name) {
     return { id: '', status: 'not_found', error: '姓名为空' }
   }
 
-  const { data: byName, error } = await supabase
-    .from('employees')
-    .select('id')
-    .eq('name', name)
-    .limit(2)
+  const results = db.exec(
+    'SELECT id FROM employees WHERE name = ? LIMIT 2',
+    [name]
+  )
 
-  if (error) {
-    return { id: '', status: 'not_found', error: '查询失败' }
+  const rows = results[0]?.values || []
+
+  if (rows.length === 1) {
+    return { id: rows[0][0] as string, status: 'matched' }
   }
 
-  if (byName && byName.length === 1) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return { id: (byName as any[])[0].id, status: 'matched' }
-  }
-
-  if (byName && byName.length > 1) {
+  if (rows.length > 1) {
     return { id: '', status: 'multiple_match', error: '存在多个同名员工' }
   }
 

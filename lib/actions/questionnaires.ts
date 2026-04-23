@@ -137,7 +137,7 @@ export async function sendQuestionnaireEmail(
         continue
       }
 
-      // 生成问卷令牌
+      // 先生成问卷令牌用于构建链接
       const token = await generateSurveyTokenDB(employeeId, questionnaireId, expiresInDays)
       const surveyLink = questionnaire?.external_url || `${appUrl}/survey/${token}`
 
@@ -159,6 +159,11 @@ export async function sendQuestionnaireEmail(
       } else {
         results.failed++
         results.errors.push(`员工 ${employee.name}(${employee.email}): ${emailResult.error}`)
+        // 发送失败时删除已生成的令牌，避免统计错误
+        const { getDb, saveDatabase } = await import('@/lib/db')
+        const db = await getDb()
+        db.run('DELETE FROM survey_tokens WHERE token = ?', [token])
+        saveDatabase()
       }
     } catch (error) {
       results.failed++
@@ -168,4 +173,15 @@ export async function sendQuestionnaireEmail(
 
   revalidatePath('/questionnaires')
   return results
+}
+
+/**
+ * 刷新问卷统计数据
+ */
+export async function refreshQuestionnaireStats(questionnaireId: string): Promise<{
+  totalSent: number
+  totalResponded: number
+  responseRate: number
+}> {
+  return getSurveyResponseRateDB(questionnaireId)
 }

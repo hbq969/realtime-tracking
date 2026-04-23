@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
+export const dynamic = 'force-dynamic'
+
 export default function CreateQuestionnairePage() {
   async function handleCreate(data: {
     title: string

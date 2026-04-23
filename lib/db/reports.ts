@@ -4,6 +4,9 @@
 import { getDb, saveDatabase, generateId } from './index'
 import type { Report, ReportFilters, ReportContent } from '@/types/report'
 
+// SQL 参数类型
+type SqlParam = string | number | null | Uint8Array
+
 // 分页参数
 interface PaginationParams {
   page?: number
@@ -39,7 +42,7 @@ function rowToReport(row: unknown[]): Report {
 export async function getReports(
   pagination: PaginationParams = {}
 ): Promise<PaginatedResult<Report>> {
-  const db = getDb()
+  const db = await getDb()
   const { page = 1, pageSize = 10 } = pagination
   const offset = (page - 1) * pageSize
 
@@ -68,7 +71,7 @@ export async function getReports(
  * 根据ID获取报告（服务端）
  */
 export async function getReportById(id: string): Promise<Report | null> {
-  const db = getDb()
+  const db = await getDb()
 
   const results = db.exec('SELECT * FROM reports WHERE id = ?', [id])
   const rows = results[0]?.values || []
@@ -87,11 +90,11 @@ export async function generateReportContent(
   type: string,
   filters: ReportFilters = {}
 ): Promise<ReportContent> {
-  const db = getDb()
+  const db = await getDb()
 
   // 构建员工查询条件
   const conditions: string[] = []
-  const params: unknown[] = []
+  const params: SqlParam[] = []
 
   if (filters.date_from) {
     conditions.push('leave_date >= ?')
@@ -214,7 +217,7 @@ export async function createReport(
   type: string,
   filters: ReportFilters = {}
 ): Promise<Report> {
-  const db = getDb()
+  const db = await getDb()
 
   // 生成报告内容
   const content = await generateReportContent(type, filters)
@@ -245,7 +248,7 @@ export async function createReport(
  * 删除报告（服务端）
  */
 export async function deleteReport(id: string): Promise<void> {
-  const db = getDb()
+  const db = await getDb()
 
   db.run('DELETE FROM reports WHERE id = ?', [id])
   saveDatabase()
@@ -258,7 +261,7 @@ export async function getReportStats(): Promise<{
   total: number
   byType: Record<string, number>
 }> {
-  const db = getDb()
+  const db = await getDb()
 
   const results = db.exec('SELECT type FROM reports')
   const rows = results[0]?.values || []

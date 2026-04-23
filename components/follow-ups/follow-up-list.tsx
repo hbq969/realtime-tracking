@@ -40,9 +40,11 @@ export function FollowUpList({ plans }: FollowUpListProps) {
             <TableCell>{plan.employee?.department}</TableCell>
             <TableCell>{plan.employee?.team || '-'}</TableCell>
             <TableCell>
-              {plan.followUpRecordCreatedAt
+              {plan.status === 'completed' && plan.followUpRecordCreatedAt
                 ? new Date(plan.followUpRecordCreatedAt).toLocaleString('zh-CN')
-                : '-'}
+                : plan.plan_date
+                  ? new Date(plan.plan_date).toLocaleDateString('zh-CN')
+                  : '-'}
             </TableCell>
             <TableCell>
               <Badge

@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Users, UserCheck, FileText, TrendingUp } from 'lucide-react'
 
+export const dynamic = 'force-dynamic'
+
 export default async function DashboardPage() {
   const employeeStats = await getEmployeeStats()
   const followUpStats = await getFollowUpStats()

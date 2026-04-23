@@ -1,12 +1,15 @@
 'use server'
 
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import {
+  createEmployee,
+  updateEmployee,
+  deleteEmployee,
+  importEmployees as dbImportEmployees,
+  type Employee
+} from '@/lib/db/employees'
+import { createDefaultFollowUpPlans } from '@/lib/db/follow-ups'
 import type { EmployeeFormData } from '@/types/employee'
-import type { Database } from '@/types/database'
-
-type EmployeeInsert = Database['public']['Tables']['employees']['Insert']
-type FollowUpPlanInsert = Database['public']['Tables']['follow_up_plans']['Insert']
 
 /**
  * 创建员工
@@ -15,32 +18,9 @@ export async function createEmployeeAction(
   employeeData: EmployeeFormData
 ): Promise<{ success: boolean; data?: { id: string }; error?: string }> {
   try {
-    const supabase = await createSupabaseServerClient()
-    const insertData: EmployeeInsert = {
-      name: employeeData.name,
-      phone: employeeData.phone || null,
-      email: employeeData.email || null,
-      department: employeeData.department || null,
-      team: (employeeData as any).team || null,
-      position: employeeData.position || null,
-      leave_date: employeeData.leave_date || null,
-      leave_reason: employeeData.leave_reason || null,
-      employment_duration: employeeData.employment_duration || null,
-      status: 'pending',
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = (await supabase
-      .from('employees')
-      .insert(insertData as any)
-      .select()
-      .single()) as any
-
-    if (error) {
-      return { success: false, error: error.message }
-    }
-
+    const employee = await createEmployee(employeeData)
     revalidatePath('/employees')
-    return { success: true, data: { id: data.id } }
+    return { success: true, data: { id: employee.id } }
   } catch (err) {
     return { success: false, error: (err as Error).message }
   }
@@ -55,27 +35,7 @@ export async function createDefaultFollowUpPlansAction(
   leaveDate: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = await createSupabaseServerClient()
-    const leaveDateObj = new Date(leaveDate)
-
-    // 默认离职后1个月回访
-    const planDate = new Date(leaveDateObj)
-    planDate.setMonth(planDate.getMonth() + 1)
-
-    const insertData: FollowUpPlanInsert = {
-      employee_id: employeeId,
-      plan_date: planDate.toISOString().split('T')[0],
-      follow_up_type: '1m',
-      status: 'pending',
-      reminder_sent: false,
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await supabase.from('follow_up_plans').insert(insertData as any)
-
-    if (error) {
-      return { success: false, error: error.message }
-    }
-
+    await createDefaultFollowUpPlans(employeeId, leaveDate)
     revalidatePath('/follow-ups')
     return { success: true }
   } catch (err) {
@@ -89,38 +49,7 @@ export async function createDefaultFollowUpPlansAction(
 export async function importEmployeesAction(
   employees: Array<EmployeeFormData>
 ): Promise<{ success: number; failed: number; errors: string[] }> {
-  const supabase = await createSupabaseServerClient()
-  const results = { success: 0, failed: 0, errors: [] as string[] }
-
-  for (const [index, employee] of employees.entries()) {
-    try {
-      const insertData: EmployeeInsert = {
-        name: employee.name,
-        phone: employee.phone || null,
-        email: employee.email || null,
-        department: employee.department || null,
-        team: (employee as any).team || null,
-        position: employee.position || null,
-        leave_date: employee.leave_date || null,
-        leave_reason: employee.leave_reason || null,
-        employment_duration: employee.employment_duration || null,
-        status: 'pending',
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await supabase.from('employees').insert(insertData as any)
-
-      if (error) {
-        results.failed++
-        results.errors.push(`第${index + 1}行: ${error.message}`)
-      } else {
-        results.success++
-      }
-    } catch (err) {
-      results.failed++
-      results.errors.push(`第${index + 1}行: ${(err as Error).message}`)
-    }
-  }
-
+  const results = await dbImportEmployees(employees)
   revalidatePath('/employees')
   return results
 }
@@ -133,19 +62,7 @@ export async function updateEmployeeAction(
   employeeData: Partial<EmployeeFormData>
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = await createSupabaseServerClient()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabaseAny = supabase as any
-    const updateData = {
-      ...employeeData,
-      updated_at: new Date().toISOString(),
-    }
-    const { error } = await supabaseAny.from('employees').update(updateData).eq('id', id)
-
-    if (error) {
-      return { success: false, error: error.message }
-    }
-
+    await updateEmployee(id, employeeData)
     revalidatePath('/employees')
     revalidatePath(`/employees/${id}`)
     return { success: true }
@@ -161,13 +78,7 @@ export async function deleteEmployeeAction(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = await createSupabaseServerClient()
-    const { error } = await supabase.from('employees').delete().eq('id', id)
-
-    if (error) {
-      return { success: false, error: error.message }
-    }
-
+    await deleteEmployee(id)
     revalidatePath('/employees')
     return { success: true }
   } catch (err) {
